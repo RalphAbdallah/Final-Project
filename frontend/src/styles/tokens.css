@@ -1,0 +1,85 @@
+/* Design tokens. Source of truth: MD/DESIGN.md frontmatter. */
+:root {
+  /* Night: the dark top, where your share lives */
+  --night: oklch(0.13 0 0);
+  --night-raised: oklch(0.21 0 0);
+  --night-line: oklch(0.3 0 0);
+  --night-ink: oklch(0.98 0 0);
+  --night-muted: oklch(0.72 0 0);
+
+  /* Day: sheets and lists */
+  --day: oklch(1 0 0);
+  --day-sunken: oklch(0.965 0 0);
+  --day-pressed: oklch(0.93 0 0);
+  --day-line: oklch(0.91 0 0);
+  --ink: oklch(0.17 0 0);
+  --ink-muted: oklch(0.47 0 0);
+
+  /* Lime accent: primary action, claimed state. Never text on white (use lime-deep). */
+  --lime: oklch(0.9 0.18 124);
+  --lime-press: oklch(0.84 0.18 124);
+  --lime-ink: oklch(0.22 0.05 124);
+  --lime-deep: oklch(0.48 0.13 128);
+  --lime-soft: oklch(0.96 0.06 124);
+
+  /* Payment status, always paired with a word */
+  --status-unpaid: oklch(0.78 0.15 70);
+  --status-unpaid-soft: oklch(0.96 0.05 80);
+  --status-unpaid-ink: oklch(0.45 0.11 60);
+  --status-marked: oklch(0.62 0.17 255);
+  --status-marked-soft: oklch(0.95 0.03 255);
+  --status-marked-ink: oklch(0.45 0.15 260);
+  --status-confirmed: oklch(0.66 0.16 150);
+  --status-confirmed-soft: oklch(0.95 0.05 150);
+  --status-confirmed-ink: oklch(0.42 0.11 150);
+  --danger: oklch(0.55 0.2 25);
+  --danger-soft: oklch(0.96 0.03 25);
+
+  /* Wallets (Neo and Suyool are placeholders, PRD Q19) */
+  --wallet-whish: oklch(0.6 0.21 18);
+  --wallet-whish-ink: oklch(1 0 0);
+  --wallet-omt: oklch(0.87 0.17 95);
+  --wallet-omt-ink: oklch(0.2 0.03 95);
+  --wallet-neo: oklch(0.55 0.16 265);
+  --wallet-neo-ink: oklch(1 0 0);
+  --wallet-suyool: oklch(0.7 0.13 200);
+  --wallet-suyool-ink: oklch(0.2 0.03 200);
+  --wallet-cash: oklch(0.93 0 0);
+  --wallet-cash-ink: oklch(0.17 0 0);
+
+  /* Type: one system family, fixed rem scale */
+  --font: system-ui, -apple-system, 'SF Pro Text', 'Segoe UI', Roboto, sans-serif;
+  --text-amount: 3.5rem;
+  --text-title: 1.75rem;
+  --text-heading: 1.25rem;
+  --text-body: 1.0625rem;
+  --text-label: 0.9375rem;
+  --text-caption: 0.8125rem;
+
+  /* Space (rem, so it scales with the user's text size) */
+  --space-xs: 0.25rem;
+  --space-sm: 0.5rem;
+  --space-md: 0.75rem;
+  --space-lg: 1rem;
+  --space-xl: 1.5rem;
+  --space-2xl: 2rem;
+  --space-3xl: 3rem;
+  --gutter: 1.25rem;
+  --column: 30rem;
+
+  /* Shape */
+  --radius-chip: 8px;
+  --radius-card: 20px;
+  --radius-sheet: 28px;
+  --radius-pill: 999px;
+
+  /* Motion */
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+  --dur-press: 100ms;
+  --dur-fast: 160ms;
+  --dur-base: 220ms;
+
+  /* Layers (sheets use the browser's top layer via <dialog>) */
+  --z-dock: 10;
+  --z-toast: 20;
+}

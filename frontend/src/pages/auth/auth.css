@@ -1,0 +1,53 @@
+.auth .top {
+  padding-bottom: 2.25rem;
+}
+
+.auth .wordmark {
+  text-decoration: none;
+}
+
+.auth__heading {
+  margin-top: var(--space-xl);
+}
+
+.auth__title {
+  font-size: var(--text-title);
+  font-weight: 750;
+  line-height: 1.12;
+  letter-spacing: -0.02em;
+}
+
+.auth__lede {
+  max-width: 34ch;
+  margin-top: var(--space-sm);
+  font-size: var(--text-label);
+  color: var(--night-muted);
+  text-wrap: pretty;
+}
+
+.auth .surface {
+  padding-bottom: calc(var(--space-2xl) + env(safe-area-inset-bottom));
+}
+
+.auth-form {
+  display: grid;
+  gap: var(--space-lg);
+  padding-top: var(--space-lg);
+}
+
+.auth-form .pill--primary {
+  margin-top: var(--space-sm);
+}
+
+.auth__switch {
+  margin-top: var(--space-xl);
+  font-size: var(--text-label);
+  color: var(--ink-muted);
+  text-align: center;
+}
+
+.auth__switch a {
+  color: var(--lime-deep);
+  font-weight: 650;
+  text-underline-offset: 2px;
+}

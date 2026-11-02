@@ -1,0 +1,27 @@
+{
+  "name": "split-backend",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "node --env-file-if-exists=.env --watch src/index.js",
+    "start": "node --env-file-if-exists=.env src/index.js",
+    "test": "vitest run",
+    "db:check": "node --env-file=.env scripts/check-db.js",
+    "db:migrate": "node --env-file=.env scripts/migrate.js",
+    "storage:setup": "node --env-file=.env scripts/setup-storage.js"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.118.0",
+    "cors": "^2.8.6",
+    "express": "^5.3.0",
+    "multer": "^2.5.0",
+    "pg": "^8.23.1"
+  },
+  "devDependencies": {
+    "supertest": "^7.3.1",
+    "vitest": "^5.1.0"
+  },
+  "optionalDependencies": {
+    "@rolldown/binding-win32-x64-msvc": "^1.2.16"
+  }
+}
