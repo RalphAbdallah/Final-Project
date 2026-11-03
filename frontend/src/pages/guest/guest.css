@@ -340,9 +340,9 @@
 }
 
 .method.is-selected .method__check {
-  background: var(--lime-deep);
+  background: var(--lime);
   box-shadow: none;
-  color: var(--day);
+  color: var(--lime-ink);
 }
 
 .method-panel {

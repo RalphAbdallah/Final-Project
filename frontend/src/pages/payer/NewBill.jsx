@@ -1,5 +1,5 @@
 import { useEffect, useId, useRef, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import Amount from '../../components/Amount.jsx';
 import Icon from '../../components/Icon.jsx';
 import Sheet from '../../components/Sheet.jsx';
@@ -10,7 +10,7 @@ import { prepareReceiptPhoto } from '../../lib/images.js';
 import { formatMoney, parseMoney, plainAmount } from '../../lib/money.js';
 import './newbill.css';
 
-const MAX_PHOTOS = 4;
+const MAX_PHOTOS = 6;
 
 const READ_ERRORS = {
   not_a_receipt: "That doesn't look like a receipt. Retake the photo with the whole receipt in view.",
@@ -18,7 +18,21 @@ const READ_ERRORS = {
   ai_not_configured: 'Receipt reading is off: add the OpenAI key to backend/.env and restart the backend.',
   offline: "You're offline. Check your connection and try again.",
   photo_too_large: 'One of the photos is too large. Retake it and try again.',
+  ai_timeout: 'Reading is slow right now. Try again in a moment.',
 };
+
+/** Reading limits (backend receipts/limits.js): say plainly when they can try again. */
+function limitMessage(err) {
+  const wait = err.data?.retryAfter;
+  const when =
+    wait == null ? 'later' : wait < 3600 ? `in ${Math.ceil(wait / 60)} min` : `in ${Math.ceil(wait / 3600)} h`;
+  return {
+    read_in_progress: 'A receipt is already being read. Wait for it to finish.',
+    ai_hourly_limit: `You've read a lot of receipts this hour. Try again ${when}.`,
+    ai_daily_limit: `You've reached today's limit for reading receipts. Try again ${when}.`,
+    ai_busy: `Receipt reading is paused for now. Try again ${when}.`,
+  }[err.code];
+}
 
 let nextKey = 0;
 const withKey = (item) => ({ key: `item-${nextKey++}`, ...item });
@@ -48,6 +62,19 @@ export default function NewBill() {
   photosRef.current = photos;
 
   useEffect(() => () => photosRef.current.forEach((p) => URL.revokeObjectURL(p.url)), []);
+
+  // "New bill" on home opens the camera and hands the photo over: add it once,
+  // then clear it from history so a reload doesn't add it again.
+  const location = useLocation();
+  const handedOver = useRef(false);
+  useEffect(() => {
+    const handed = location.state?.photos;
+    if (handedOver.current || !handed?.length) return;
+    handedOver.current = true;
+    addFiles(handed);
+    navigate(location.pathname, { replace: true, state: null });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   async function addFiles(fileList) {
     const files = [...fileList].slice(0, MAX_PHOTOS - photos.length);
@@ -85,7 +112,7 @@ export default function NewBill() {
       setPhase('review');
     } catch (err) {
       setPhase('photos');
-      setError(READ_ERRORS[err.code] ?? "Couldn't read the receipt right now. Try again in a moment.");
+      setError(limitMessage(err) ?? READ_ERRORS[err.code] ?? "Couldn't read the receipt right now. Try again in a moment.");
     }
   }
 
@@ -294,6 +321,7 @@ export default function NewBill() {
 
 function PhotoStep({ photos, reading, preparing, error, onAdd, onRemove, onRead, onBack, toast }) {
   const inputId = useId();
+  const libraryId = useId();
   return (
     <div className="screen newbill">
       <header className="top on-night">
@@ -307,12 +335,10 @@ function PhotoStep({ photos, reading, preparing, error, onAdd, onRemove, onRead,
           <span className="newbill__spacer" />
         </div>
         <div className="newbill__heading">
-          <h1 className="newbill__title">{reading ? 'Reading the receipt…' : 'Photograph the receipt'}</h1>
-          <p className="newbill__lede">
-            {reading
-              ? 'This takes a few seconds. You can fix anything on the next screen.'
-              : 'Lay it flat in good light. Long receipt? Take one photo per part, top to bottom.'}
-          </p>
+          <h1 className="newbill__title">{reading ? 'Reading the receipt' : 'Take photos of the receipt'}</h1>
+          {reading && (
+            <p className="newbill__lede">Please wait…</p>
+          )}
         </div>
       </header>
 
@@ -339,7 +365,7 @@ function PhotoStep({ photos, reading, preparing, error, onAdd, onRemove, onRead,
                   id={inputId}
                   type="file"
                   accept="image/*"
-                  multiple
+                  capture="environment"
                   className="visually-hidden"
                   onChange={(e) => {
                     onAdd(e.target.files);
@@ -350,7 +376,7 @@ function PhotoStep({ photos, reading, preparing, error, onAdd, onRemove, onRead,
                   <Icon name="plus" size={22} />
                 </span>
                 <span className="photo-add__title">
-                  {preparing ? 'Adding…' : photos.length === 0 ? 'Take or choose a photo' : 'Add the next part'}
+                  {preparing ? 'Adding…' : photos.length === 0 ? 'Take a photo' : 'Add the next part'}
                 </span>
               </label>
             </li>
@@ -363,11 +389,28 @@ function PhotoStep({ photos, reading, preparing, error, onAdd, onRemove, onRead,
         )}
       </main>
 
-      <div className="dock on-day">
+      <div className="dock on-day newbill__dock">
+        {!reading && photos.length < MAX_PHOTOS && (
+          // The tile opens the camera; this opens the photo library (several at once).
+          <label htmlFor={libraryId} className="pill pill--day pill--block" aria-busy={preparing}>
+            <input
+              id={libraryId}
+              type="file"
+              accept="image/*"
+              multiple
+              className="visually-hidden"
+              onChange={(e) => {
+                onAdd(e.target.files);
+                e.target.value = '';
+              }}
+            />
+            <Icon name="upload" size={18} />
+            Choose from photos
+          </label>
+        )}
         <button type="button" className="pill pill--primary pill--block" onClick={onRead} disabled={photos.length === 0 || reading || preparing}>
           {reading ? 'Reading…' : photos.length > 1 ? `Read receipt (${photos.length} photos)` : 'Read receipt'}
         </button>
-        <p className="dock__hint">Up to {MAX_PHOTOS} photos. Nothing is shared until you create the bill.</p>
       </div>
       {toast}
     </div>

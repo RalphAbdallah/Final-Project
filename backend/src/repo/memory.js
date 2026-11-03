@@ -10,7 +10,7 @@ export class NameTakenError extends Error {
  * so they run without a database. Returns copies, like a real database would.
  */
 export function createMemoryRepo() {
-  const db = { users: [], bills: [], items: [], members: [], claims: [], payouts: [] };
+  const db = { users: [], bills: [], items: [], members: [], claims: [], payouts: [], aiUsage: [] };
   let seq = 0;
   const copy = (value) => (value == null ? null : structuredClone(value));
 
@@ -103,6 +103,19 @@ export function createMemoryRepo() {
       db.items.push(...items.map((item, position) => ({ id: newId(), billId: bill.id, position, ...item })));
       insertMember(bill.id, { name: user.name, isPayer: true, status: 'confirmed' });
       return copy(bill);
+    },
+
+    async aiUsageSince({ userId, since }) {
+      const rows = db.aiUsage.filter((r) => r.createdAt >= since && (!userId || r.userId === userId));
+      return {
+        reads: rows.length,
+        tokens: rows.reduce((acc, r) => acc + r.totalTokens, 0),
+        oldest: rows.length ? new Date(Math.min(...rows.map((r) => r.createdAt.getTime()))) : null,
+      };
+    },
+
+    async recordAiUsage({ userId, photos, usage, ms, ok, createdAt = new Date() }) {
+      db.aiUsage.push({ userId, photos, totalTokens: usage?.total ?? 0, ms, ok, createdAt });
     },
 
     async getPayerBill(userId, billId) {

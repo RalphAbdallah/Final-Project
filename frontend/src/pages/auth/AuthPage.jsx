@@ -16,7 +16,7 @@ export default function AuthPage({ mode }) {
   const [error, setError] = useState(null);
   const [busy, setBusy] = useState(false);
   const [checkInbox, setCheckInbox] = useState(false);
-  const ids = { name: useId(), email: useId(), password: useId(), passwordHint: useId(), error: useId() };
+  const ids = { name: useId(), email: useId(), password: useId(), error: useId() };
 
   if (session) return <Navigate to={isSignup ? '/get-paid' : (location.state?.from ?? '/')} replace />;
 
@@ -74,12 +74,7 @@ export default function AuthPage({ mode }) {
           </Link>
         </div>
         <div className="auth__heading">
-          <h1 className="auth__title">{isSignup ? 'Create your account' : 'Log in'}</h1>
-          <p className="auth__lede">
-            {isSignup
-              ? 'Only the person who pays needs an account. Your friends just scan and tap.'
-              : 'See who has paid you back, and split your next bill.'}
-          </p>
+          <h1 className="auth__title">{isSignup ? 'Sign up' : 'Log in'}</h1>
         </div>
       </header>
 
@@ -115,7 +110,6 @@ export default function AuthPage({ mode }) {
               autoComplete="email"
               autoCapitalize="none"
               spellCheck={false}
-              placeholder="you@example.com"
             />
           </div>
           <div className="field">
@@ -129,13 +123,7 @@ export default function AuthPage({ mode }) {
               value={fields.password}
               onChange={set('password')}
               autoComplete={isSignup ? 'new-password' : 'current-password'}
-              aria-describedby={isSignup ? ids.passwordHint : undefined}
             />
-            {isSignup && (
-              <p id={ids.passwordHint} className="field__hint">
-                At least {MIN_PASSWORD} characters.
-              </p>
-            )}
           </div>
 
           {error && (

@@ -1,8 +1,8 @@
 import { useEffect, useId, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Icon from '../../components/Icon.jsx';
-import WalletStack from '../../components/WalletStack.jsx';
-import { api } from '../../lib/api.js';
+import WalletLogo from '../../components/WalletLogo.jsx';
+import { api, cachedProfile } from '../../lib/api.js';
 import { readQrFromFile } from '../../lib/qr.js';
 import { displayLink, WALLET_ORDER, WALLETS } from '../../lib/wallets.js';
 import './getpaid.css';
@@ -10,25 +10,27 @@ import './getpaid.css';
 /** Get-paid setup (PRD M1): pick wallets, then upload each wallet's receive-money QR code. */
 export default function GetPaid() {
   const navigate = useNavigate();
-  const [profile, setProfile] = useState(null);
+  // Start from the remembered profile (instant), then refresh it.
+  const [profile, setProfile] = useState(cachedProfile);
   const [failed, setFailed] = useState(false);
   const [step, setStep] = useState('choose');
-  const [picked, setPicked] = useState([]);
+  const [picked, setPicked] = useState(() => cachedProfile()?.payouts.map((x) => x.wallet) ?? []);
   const [index, setIndex] = useState(0);
   const [saving, setSaving] = useState(false);
+  const touched = useRef(false);
 
   useEffect(() => {
-    // Ignore a response that lands after this effect was cleaned up, so a slow
-    // first load can't reset choices the payer already made.
+    // Ignore a response that lands after this effect was cleaned up, and never
+    // reset choices the payer already made while it was loading.
     let active = true;
     api
       .profile()
       .then((p) => {
         if (!active) return;
         setProfile(p);
-        setPicked(p.payouts.map((x) => x.wallet));
+        if (!touched.current) setPicked(p.payouts.map((x) => x.wallet));
       })
-      .catch(() => active && setFailed(true));
+      .catch(() => active && !cachedProfile() && setFailed(true));
     return () => {
       active = false;
     };
@@ -52,6 +54,7 @@ export default function GetPaid() {
   const current = picked[index];
 
   function toggle(id) {
+    touched.current = true;
     setPicked((list) => WALLET_ORDER.filter((w) => (w === id ? !list.includes(id) : list.includes(w))));
   }
 
@@ -62,17 +65,20 @@ export default function GetPaid() {
       for (const id of savedIds.filter((w) => !picked.includes(w))) next = await api.removePayout(id);
       setProfile(next);
       setIndex(0);
-      setStep(picked.length > 0 ? 'add' : 'done');
+      // Nothing to link (cash only): it's saved, back to the account.
+      if (picked.length > 0) setStep('add');
+      else navigate('/', { replace: true });
     } catch {
-      // Stay on this step; the dock hint explains.
+      // Stay on this step so they can try again.
     } finally {
       setSaving(false);
     }
   }
 
+  // Each wallet's link is saved as soon as its QR code is read, so Finish just goes home.
   function next() {
     if (index + 1 < picked.length) setIndex(index + 1);
-    else setStep('done');
+    else navigate('/', { replace: true });
   }
 
   function back() {
@@ -80,39 +86,25 @@ export default function GetPaid() {
     else setStep('choose');
   }
 
-  /** Opens the payer's latest bill as a guest sees it, creating a sample bill if they have none yet. */
-  async function openGuestView() {
-    setSaving(true);
-    try {
-      const shareToken = profile.bills[0]?.shareToken ?? (await api.createSampleBill()).shareToken;
-      navigate(`/b/${shareToken}`);
-    } catch {
-      setSaving(false);
-    }
-  }
-
-  function skip() {
-    setPicked((list) => list.filter((w) => w !== current));
-    if (index + 1 >= picked.length) setStep('done');
-  }
-
   const headings = {
     choose: {
-      title: 'How do you receive money?',
-      lede: 'Pick every wallet your friends can pay you with. Cash always works.',
+      title: 'How do you accept money?',
+      lede: null,
     },
     add: current && {
-      title: `Add your ${WALLETS[current].name} QR code`,
-      lede: `${index + 1} of ${picked.length}. Guests tap it to open ${WALLETS[current].app} on paying you.`,
-    },
-    done: {
-      title: savedIds.length ? "You're ready to get paid" : 'Guests will pay you in cash',
-      lede: savedIds.length
-        ? 'Guests see these options when they pay you.'
-        : 'Add a wallet any time, so friends can pay you from their phone.',
+      // "Link your / account" with the wallet's logo beside it; the name is still read aloud.
+      title: (
+        <>
+          Link your<span className="visually-hidden"> {WALLETS[current].name}</span>
+          <br />
+          account
+        </>
+      ),
+      logo: current,
+      lede: null,
     },
   };
-  const heading = (step === 'add' && !current ? headings.done : headings[step]) ?? headings.choose;
+  const heading = (step === 'add' && current ? headings.add : headings.choose);
 
   return (
     <div className="screen getpaid">
@@ -131,36 +123,31 @@ export default function GetPaid() {
           </p>
           <span className="getpaid__spacer" />
         </div>
-        <div className="getpaid__heading">
+        <div className={`getpaid__heading${heading.logo ? ' getpaid__heading--logo' : ''}`}>
           <h1 className="getpaid__title">{heading.title}</h1>
-          <p className="getpaid__lede">{heading.lede}</p>
+          {heading.logo && <WalletLogo wallet={heading.logo} size={84} />}
+          {heading.lede && <p className="getpaid__lede">{heading.lede}</p>}
         </div>
-        <WalletStack wallets={savedIds} />
       </header>
 
-      <main className="surface on-day">
+      <main className={`surface on-day${step === 'add' ? ' getpaid__sheet--link' : ''}`}>
         {step === 'choose' && (
           <fieldset className="wallet-picks">
             <legend className="visually-hidden">Wallets you receive money on</legend>
             {WALLET_ORDER.map((id) => (
               <label key={id} className="wallet-pick">
                 <input type="checkbox" className="visually-hidden" checked={picked.includes(id)} onChange={() => toggle(id)} />
-                <span className={`wallet-pick__swatch wallet--${id}`} aria-hidden="true">
-                  {WALLETS[id].name[0]}
-                </span>
+                <WalletLogo wallet={id} />
                 <span className="wallet-pick__text">
                   <span className="wallet-pick__name">{WALLETS[id].name}</span>
-                  <span className="wallet-pick__meta">{saved.has(id) ? 'QR code added' : WALLETS[id].app}</span>
+                  {saved.has(id) && <span className="wallet-pick__meta">QR code added</span>}
                 </span>
                 <span className="wallet-pick__check" aria-hidden="true">
                   <Icon name="check" size={16} />
                 </span>
               </label>
             ))}
-            <p className="cash-note">
-              <Icon name="cash" size={18} />
-              Cash is always an option for your guests.
-            </p>
+            <p className="cash-note">Cash is always an option</p>
           </fieldset>
         )}
 
@@ -180,96 +167,27 @@ export default function GetPaid() {
           </>
         )}
 
-        {step === 'done' && (
-          <ul className="wallet-list">
-            {savedIds.map((id) => (
-              <li key={id} className="wallet-row">
-                <span className={`wallet-pick__swatch wallet--${id}`} aria-hidden="true">
-                  {WALLETS[id].name[0]}
-                </span>
-                <span className="wallet-row__text">
-                  <span className="wallet-pick__name">{WALLETS[id].name}</span>
-                  <span className="wallet-row__link">{displayLink(saved.get(id))}</span>
-                </span>
-                <button
-                  type="button"
-                  className="pill pill--day pill--small"
-                  onClick={() => {
-                    setPicked(savedIds);
-                    setIndex(savedIds.indexOf(id));
-                    setStep('add');
-                  }}
-                  aria-label={`Change ${WALLETS[id].name} QR code`}
-                >
-                  Change
-                </button>
-              </li>
-            ))}
-            <li className="wallet-row">
-              <span className="wallet-pick__swatch wallet--cash" aria-hidden="true">
-                <Icon name="cash" size={18} />
-              </span>
-              <span className="wallet-row__text">
-                <span className="wallet-pick__name">Cash</span>
-                <span className="wallet-row__link">Always available</span>
-              </span>
-            </li>
-          </ul>
-        )}
       </main>
 
       <div className="dock on-day">
         {step === 'choose' && (
           <button type="button" className="pill pill--primary pill--block" onClick={continueFromChoose} disabled={saving}>
-            {picked.length === 0
-              ? 'Continue with cash only'
-              : `Continue with ${picked.length} wallet${picked.length > 1 ? 's' : ''}`}
+            Continue
           </button>
         )}
         {step === 'add' && current && (
-          <>
-            <button
-              type="button"
-              className="pill pill--primary pill--block"
-              onClick={next}
-              disabled={!saved.has(current)}
-            >
-              {index + 1 < picked.length ? `Next: ${WALLETS[picked[index + 1]].name}` : 'Finish'}
-            </button>
-            {!saved.has(current) && (
-              <p className="dock__hint">
-                <button type="button" className="text-button text-button--muted" onClick={skip}>
-                  Skip {WALLETS[current].name} for now
-                </button>
-              </p>
-            )}
-          </>
-        )}
-        {step === 'done' && (
-          <div className="dock__stack">
-            <button type="button" className="pill pill--primary pill--block" onClick={openGuestView} disabled={saving}>
-              {saving ? 'Opening…' : 'See what your guests see'}
-            </button>
-            <button type="button" className="pill pill--day pill--block" onClick={() => setStep('choose')}>
-              Edit wallets
-            </button>
-          </div>
+          <button type="button" className="pill pill--primary pill--block" onClick={next} disabled={!saved.has(current)}>
+            {index + 1 < picked.length ? `Next: ${WALLETS[picked[index + 1]].name}` : 'Finish'}
+          </button>
         )}
       </div>
     </div>
   );
 }
 
-const UPLOAD_ERRORS = {
-  no_qr: () => "We couldn't find a QR code in that image. Use a screenshot where the whole code is visible.",
-  not_a_link: (name) => `That QR code isn't a link. Make sure you saved your ${name} receive-money QR code.`,
-  wrong_wallet: (name, host) => `That QR code opens ${host}, not ${name}. Upload your ${name} QR code.`,
-  offline: () => "You're offline. Check your connection and try again.",
-};
-
 function QrUpload({ wallet, savedUrl, onSaved }) {
   const [phase, setPhase] = useState(savedUrl ? 'saved' : 'idle');
-  const [error, setError] = useState(null);
+  const [offline, setOffline] = useState(false);
   const [preview, setPreview] = useState(null);
   const inputId = useId();
   const previewRef = useRef(null);
@@ -286,7 +204,7 @@ function QrUpload({ wallet, savedUrl, onSaved }) {
     previewRef.current = URL.createObjectURL(file);
     setPreview(previewRef.current);
     setPhase('reading');
-    setError(null);
+    setOffline(false);
 
     let text = null;
     try {
@@ -296,7 +214,6 @@ function QrUpload({ wallet, savedUrl, onSaved }) {
     }
     if (!text) {
       setPhase('error');
-      setError(UPLOAD_ERRORS.no_qr());
       return;
     }
     try {
@@ -304,7 +221,7 @@ function QrUpload({ wallet, savedUrl, onSaved }) {
       setPhase('saved');
     } catch (err) {
       setPhase('error');
-      setError((UPLOAD_ERRORS[err.code] ?? (() => "Couldn't save that QR code. Try again."))(name, err.data?.host));
+      setOffline(err.code === 'offline');
     }
   }
 
@@ -338,13 +255,16 @@ function QrUpload({ wallet, savedUrl, onSaved }) {
         <span className="upload__title">
           {phase === 'reading' ? 'Reading the QR code…' : phase === 'error' ? 'Try another image' : 'Upload QR image'}
         </span>
-        <span className="upload__meta">A screenshot or saved image from {WALLETS[wallet].app}</span>
+        {phase === 'error' ? (
+          <span className="upload__meta" role="alert">
+            {offline
+              ? "You're offline. Check your connection and try again."
+              : `Only valid QR codes from the official ${name} app are accepted.`}
+          </span>
+        ) : (
+          <span className="upload__meta">A screenshot or saved image from {WALLETS[wallet].app}</span>
+        )}
       </label>
-      {error && (
-        <p className="upload__error" role="alert">
-          {error}
-        </p>
-      )}
     </div>
   );
 }

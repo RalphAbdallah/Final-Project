@@ -4,11 +4,24 @@
  */
 
 export class ReceiptReadError extends Error {
-  constructor(code, detail) {
+  constructor(code, detail, usage = null) {
     super(code);
     this.code = code;
     this.detail = detail;
+    // Tokens OpenAI charged for this call, when it got that far (failed reads still cost).
+    this.usage = usage;
   }
+}
+
+/** OpenAI's usage block → the numbers we log and limit on. */
+function readUsage(usage) {
+  if (!usage) return null;
+  return {
+    input: usage.prompt_tokens ?? 0,
+    output: usage.completion_tokens ?? 0,
+    reasoning: usage.completion_tokens_details?.reasoning_tokens ?? 0,
+    total: usage.total_tokens ?? (usage.prompt_tokens ?? 0) + (usage.completion_tokens ?? 0),
+  };
 }
 
 const nullableNumber = { type: ['number', 'null'] };
@@ -84,19 +97,39 @@ Rules:
 - Use null for anything not printed or not readable. Set is_receipt to false if the photos are not a receipt.`;
 
 /**
- * @param {{ apiKey: string, model: string }} options
- * @returns {(images: {mime: string, base64: string}[]) => Promise<object>}
+ * @param {object} options
+ * @param {string} options.apiKey
+ * @param {string} options.model
+ * @param {string} [options.reasoningEffort]  for reasoning models (gpt-5 family): minimal | low | medium | high.
+ *   Copying printed values needs little thinking; lower is faster and cheaper.
+ * @param {number} [options.maxOutputTokens]  hard cap on what one read can generate (thinking included)
+ * @param {string} [options.serviceTier]  "priority" for OpenAI's faster, pricier processing
+ * @param {number} [options.timeoutMs]  give up after this long (OpenAI sometimes stalls under load)
+ * @param {number} [options.temperature]  0 = always the single most likely reading (non-reasoning models only)
+ * @returns {(images: {mime: string, base64: string}[]) => Promise<{raw: object, usage: object}>}
  */
-export function openAiReceiptReader({ apiKey, model }) {
+export function openAiReceiptReader({
+  apiKey,
+  model,
+  reasoningEffort,
+  maxOutputTokens = 8000,
+  serviceTier,
+  timeoutMs = 60_000,
+  temperature,
+}) {
   return async (images) => {
     let res;
     try {
       res = await fetch('https://api.openai.com/v1/chat/completions', {
         method: 'POST',
         headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
-        signal: AbortSignal.timeout(120_000),
+        signal: AbortSignal.timeout(timeoutMs),
         body: JSON.stringify({
           model,
+          ...(reasoningEffort ? { reasoning_effort: reasoningEffort } : {}),
+          ...(serviceTier ? { service_tier: serviceTier } : {}),
+          ...(temperature !== undefined ? { temperature } : {}),
+          max_completion_tokens: maxOutputTokens,
           messages: [
             { role: 'system', content: INSTRUCTIONS },
             {
@@ -114,23 +147,26 @@ export function openAiReceiptReader({ apiKey, model }) {
         }),
       });
     } catch (err) {
-      throw new ReceiptReadError('ai_unavailable', err.message);
+      const timedOut = err.name === 'TimeoutError' || err.name === 'AbortError';
+      throw new ReceiptReadError(timedOut ? 'ai_timeout' : 'ai_unavailable', err.message);
     }
 
     if (!res.ok) {
       const detail = (await res.text()).slice(0, 500);
       throw new ReceiptReadError(res.status === 401 ? 'ai_key_invalid' : 'ai_unavailable', `${res.status} ${detail}`);
     }
-    const message = (await res.json()).choices?.[0]?.message;
-    if (!message || message.refusal) throw new ReceiptReadError('not_a_receipt', message?.refusal);
+    const body = await res.json();
+    const usage = readUsage(body.usage);
+    const message = body.choices?.[0]?.message;
+    if (!message || message.refusal) throw new ReceiptReadError('not_a_receipt', message?.refusal, usage);
 
     let raw;
     try {
       raw = JSON.parse(message.content);
     } catch {
-      throw new ReceiptReadError('ai_unavailable', 'Unparseable response');
+      throw new ReceiptReadError('ai_unavailable', `Unparseable response (${body.choices?.[0]?.finish_reason})`, usage);
     }
-    if (!raw.is_receipt) throw new ReceiptReadError('not_a_receipt');
-    return raw;
+    if (!raw.is_receipt) throw new ReceiptReadError('not_a_receipt', null, usage);
+    return { raw, usage };
   };
 }

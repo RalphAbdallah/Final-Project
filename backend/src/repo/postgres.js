@@ -14,7 +14,10 @@ export function createPool(connectionString) {
     connectionString,
     ssl: { rejectUnauthorized: false },
     max: 5,
-    idleTimeoutMillis: 30_000,
+    // Opening a connection to Supabase (TLS, Ireland) costs ~0.5-1 s, so keep idle
+    // ones for 5 minutes instead of 30 s: a read after a short pause stays fast.
+    idleTimeoutMillis: 5 * 60_000,
+    keepAlive: true,
   });
 }
 
@@ -209,6 +212,24 @@ export function createPostgresRepo(pool) {
       } finally {
         client.release();
       }
+    },
+
+    /** Receipt reads (and their tokens) since a time, for one payer or everyone. */
+    async aiUsageSince({ userId, since }) {
+      const row = await one(
+        `select count(*)::int as reads, coalesce(sum(total_tokens), 0) as tokens, min(created_at) as oldest
+         from ai_usage where created_at >= $1 ${userId ? 'and user_id = $2' : ''}`,
+        userId ? [since, userId] : [since],
+      );
+      return { reads: row.reads, tokens: Number(row.tokens), oldest: row.oldest };
+    },
+
+    async recordAiUsage({ userId, photos, usage, ms, ok }) {
+      await pool.query(
+        `insert into ai_usage (user_id, photos, input_tokens, output_tokens, total_tokens, ms, ok)
+         values ($1, $2, $3, $4, $5, $6, $7)`,
+        [userId, photos, usage?.input ?? 0, usage?.output ?? 0, usage?.total ?? 0, ms, ok],
+      );
     },
 
     getPayerBill: async (userId, billId) =>

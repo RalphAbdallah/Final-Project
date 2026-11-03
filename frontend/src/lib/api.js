@@ -45,6 +45,20 @@ async function request(path, { method = 'GET', body, form, guestToken, payer = f
 
 const at = encodeURIComponent;
 
+/*
+ * The payer's profile (name, wallets, bills), remembered between screens so going
+ * back to home shows instantly; screens still refresh it in the background.
+ */
+let profileCache = null;
+export const cachedProfile = () => profileCache;
+export function clearProfileCache() {
+  profileCache = null;
+}
+const remember = (profile) => {
+  profileCache = profile;
+  return profile;
+};
+
 export const api = {
   bill: (share, guestToken) => request(`/share/${at(share)}`, { guestToken }),
   join: (share, name) => request(`/share/${at(share)}/join`, { method: 'POST', body: { name } }),
@@ -55,11 +69,12 @@ export const api = {
   updateMe: (share, guestToken, changes) =>
     request(`/share/${at(share)}/me`, { method: 'PATCH', body: changes, guestToken }),
 
-  profile: () => request('/me', { payer: true }),
+  profile: () => request('/me', { payer: true }).then(remember),
   savePayout: (wallet, payUrl) =>
-    request(`/me/payouts/${at(wallet)}`, { method: 'PUT', body: { payUrl }, payer: true }),
-  removePayout: (wallet) => request(`/me/payouts/${at(wallet)}`, { method: 'DELETE', payer: true }),
-  createSampleBill: () => request('/me/sample-bill', { method: 'POST', payer: true }),
+    request(`/me/payouts/${at(wallet)}`, { method: 'PUT', body: { payUrl }, payer: true }).then(remember),
+  removePayout: (wallet) => request(`/me/payouts/${at(wallet)}`, { method: 'DELETE', payer: true }).then(remember),
+  createSampleBill: () =>
+    request('/me/sample-bill', { method: 'POST', payer: true }).finally(clearProfileCache),
 
   /** Photos (Blobs, in order) in; `{ draft, photos }` out. */
   readReceipt: (blobs) => {
@@ -67,7 +82,8 @@ export const api = {
     blobs.forEach((blob, i) => form.append('photos', blob, `receipt-${i + 1}.jpg`));
     return request('/me/receipts/read', { method: 'POST', form, payer: true });
   },
-  createBill: (draft) => request('/me/bills', { method: 'POST', body: draft, payer: true }),
+  // A new bill changes the bills list: drop the remembered profile so home refetches it.
+  createBill: (draft) => request('/me/bills', { method: 'POST', body: draft, payer: true }).finally(clearProfileCache),
   payerBill: (id) => request(`/me/bills/${at(id)}`, { payer: true }),
 };
 

@@ -4,8 +4,12 @@ import { createApp } from './app.js';
 import { createMemoryRepo } from './repo/memory.js';
 
 const PAYER_TOKEN = 'payer-token';
-const verifyToken = async (token) =>
-  token === PAYER_TOKEN ? { id: 'payer-1', email: 'ralph@example.com', name: 'Ralph' } : null;
+const verifyToken = async (token) => {
+  if (token === PAYER_TOKEN) return { id: 'payer-1', email: 'ralph@example.com', name: 'Ralph' };
+  if (token === 'payer-2-token') return { id: 'payer-2', email: 'charbel@example.com', name: 'Charbel' };
+  return null;
+};
+const FAKE_USAGE = { input: 1000, output: 500, reasoning: 200, total: 1500 };
 
 let app;
 let bill;
@@ -15,9 +19,9 @@ const asPayer = (req) => req.set('Authorization', `Bearer ${PAYER_TOKEN}`);
 // Stands in for the OpenAI reader: returns what a model would copy off the Castle receipt.
 const fakeReader = async (images) => {
   if (images[0].base64 === Buffer.from('not a receipt').toString('base64')) {
-    throw Object.assign(new Error('not_a_receipt'), { code: 'not_a_receipt' });
+    throw Object.assign(new Error('not_a_receipt'), { code: 'not_a_receipt', usage: FAKE_USAGE });
   }
-  return {
+  return { usage: FAKE_USAGE, raw: {
     is_receipt: true,
     venue: 'Castle Rooftop',
     date: '2026-07-15',
@@ -34,9 +38,14 @@ const fakeReader = async (images) => {
     service_rate: null,
     total: 26.5,
     lbp_rate: 90000,
-  };
+  } };
 };
-const fakeStorage = { upload: async (path) => uploaded.push(path) };
+const fakeStorage = {
+  upload: async (path) => uploaded.push(path),
+  remove: async (paths) => {
+    uploaded = uploaded.filter((p) => !paths.includes(p));
+  },
+};
 
 beforeEach(async () => {
   uploaded = [];
@@ -200,6 +209,51 @@ describe('bills from photos', () => {
   it("doesn't show another payer's bill", async () => {
     const res = await asPayer(request(app).get('/api/me/bills/00000000-0000-0000-0000-000000000000'));
     expect(res.status).toBe(404);
+  });
+});
+
+describe('AI reading limits', () => {
+  const photo = (req, content = 'jpeg bytes') =>
+    req.attach('photos', Buffer.from(content), { filename: 'receipt.jpg', contentType: 'image/jpeg' });
+  const limited = (limits) =>
+    createApp({
+      repo: createMemoryRepo(),
+      verifyToken,
+      readReceipt: fakeReader,
+      storage: fakeStorage,
+      aiLimits: { readsPerHour: 100, readsPerDay: 100, userTokensPerDay: 1e9, globalTokensPerDay: 1e9, ...limits },
+    });
+
+  it('stops a payer after the hourly limit, and says when to try again', async () => {
+    const app = limited({ readsPerHour: 2 });
+    expect((await photo(asPayer(request(app).post('/api/me/receipts/read')))).status).toBe(200);
+    expect((await photo(asPayer(request(app).post('/api/me/receipts/read')))).status).toBe(200);
+    const third = await photo(asPayer(request(app).post('/api/me/receipts/read')));
+    expect(third.status).toBe(429);
+    expect(third.body.error).toBe('ai_hourly_limit');
+    expect(third.body.retryAfter).toBeGreaterThan(3000);
+    expect(third.headers['retry-after']).toBe(String(third.body.retryAfter));
+  });
+
+  it('counts failed reads too, since they still cost tokens', async () => {
+    const app = limited({ readsPerHour: 1 });
+    expect((await photo(asPayer(request(app).post('/api/me/receipts/read')), 'not a receipt')).status).toBe(422);
+    expect((await photo(asPayer(request(app).post('/api/me/receipts/read')))).body.error).toBe('ai_hourly_limit');
+  });
+
+  it("enforces each payer's daily token budget", async () => {
+    const app = limited({ userTokensPerDay: 3000 });
+    await photo(asPayer(request(app).post('/api/me/receipts/read')));
+    await photo(asPayer(request(app).post('/api/me/receipts/read')));
+    expect((await photo(asPayer(request(app).post('/api/me/receipts/read')))).body.error).toBe('ai_daily_limit');
+  });
+
+  it('pauses reading for everyone once the shared daily budget is spent', async () => {
+    const app = limited({ globalTokensPerDay: 1500 });
+    await photo(asPayer(request(app).post('/api/me/receipts/read')));
+    const other = await photo(request(app).post('/api/me/receipts/read').set('Authorization', 'Bearer payer-2-token'));
+    expect(other.status).toBe(429);
+    expect(other.body.error).toBe('ai_busy');
   });
 });
 

@@ -4,10 +4,10 @@ import { checkPayUrl, WALLETS } from '../lib/wallets.js';
 import { billRoutes } from './bills.js';
 
 /** The logged-in payer: profile, get-paid setup (PRD M1), and their bills (M2). */
-export function meRoutes({ repo, verifyToken, readReceipt, storage }) {
+export function meRoutes({ repo, verifyToken, readReceipt, storage, aiLimits }) {
   const router = Router();
   router.use(requirePayer({ verifyToken, repo }));
-  router.use(billRoutes({ repo, readReceipt, storage }));
+  router.use(billRoutes({ repo, readReceipt, storage, aiLimits }));
 
   async function sendProfile(req, res) {
     const [payouts, bills] = await Promise.all([repo.listPayouts(req.user.id), repo.listBills(req.user.id)]);

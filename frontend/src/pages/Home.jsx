@@ -1,9 +1,8 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { api } from '../lib/api.js';
+import { api, cachedProfile } from '../lib/api.js';
 import { useAuth } from '../lib/auth.jsx';
 import { supabase } from '../lib/supabase.js';
-import { listWallets } from '../lib/wallets.js';
 import './Home.css';
 
 /** Landing for visitors; the payer's start screen once logged in (dashboard comes in Phase 7). */
@@ -15,24 +14,28 @@ export default function Home() {
 
 function Landing() {
   return (
-    <main className="home on-night">
-      <p className="wordmark">
-        spl<span>IT</span>
-      </p>
-      <div className="home__body">
-        <h1 className="home__title">Split the receipt at the table. Get paid back in your wallet app.</h1>
-        <p className="home__text">
-          Your friends scan a code, tap what they had, and pay you with Whish, OMT, Neo, Suyool or cash. No accounts for
-          them.
+    <main className="landing on-night">
+      <div className="landing__inner">
+        <p className="wordmark landing__logo">
+          spl<span>IT</span>
+        </p>
+        <h1 className="landing__title">
+          <span>Split your receipt.</span>
+          <span>Get your money back.</span>
+          <span>Hassle free, in real time.</span>
+        </h1>
+        <p className="landing__text">
+          Share the QR code with your friends, let them choose their share of the receipt, and they pay you back with
+          Whish Money, OMT, Neo Bank Audi, Suyool or cash.
         </p>
       </div>
-      <div className="home__actions">
-        <Link className="pill pill--primary pill--block" to="/signup">
-          Create an account
-        </Link>
-        <Link className="pill pill--night pill--block" to="/login">
-          Log in
-        </Link>
+      <div className="landing__actions">
+          <Link className="pill pill--primary pill--block" to="/login">
+            Log in
+          </Link>
+          <Link className="pill pill--night pill--block" to="/signup">
+            Create an account
+          </Link>
       </div>
     </main>
   );
@@ -40,16 +43,32 @@ function Landing() {
 
 function PayerHome() {
   const navigate = useNavigate();
-  const [profile, setProfile] = useState(null);
+  const cameraId = useId();
+  const cameraInput = useRef(null);
+  // Start from the remembered profile (instant when coming back), then refresh it.
+  const [profile, setProfile] = useState(cachedProfile);
   const [failed, setFailed] = useState(false);
   const [opening, setOpening] = useState(false);
+
+  // Closing the camera without a photo opens the new-bill screen anyway, where
+  // "Choose from photos" picks existing ones. (`cancel` doesn't bubble, so React's
+  // props can't catch it: listen on the input itself. Re-attached once the
+  // profile has loaded and the button exists.)
+  useEffect(() => {
+    const input = cameraInput.current;
+    if (!input) return undefined;
+    const onCancel = () => navigate('/bills/new');
+    input.addEventListener('cancel', onCancel);
+    return () => input.removeEventListener('cancel', onCancel);
+  }, [navigate, profile]);
 
   useEffect(() => {
     let active = true;
     api
       .profile()
       .then((p) => active && setProfile(p))
-      .catch(() => active && setFailed(true));
+      // Keep showing the remembered profile if the refresh fails.
+      .catch(() => active && !cachedProfile() && setFailed(true));
     return () => {
       active = false;
     };
@@ -100,11 +119,6 @@ function PayerHome() {
       </div>
       <div className="home__body">
         <h1 className="home__title">Hi {profile.name}.</h1>
-        <p className="home__text">
-          {wallets.length
-            ? `Guests can pay you with ${listWallets(wallets)}.`
-            : 'Set up how your friends pay you back: Whish, OMT, Neo, Suyool or cash.'}
-        </p>
       </div>
       {profile.bills.length > 0 && (
         <section className="home__bills" aria-labelledby="recent-bills">
@@ -124,11 +138,26 @@ function PayerHome() {
         </section>
       )}
       <div className="home__actions">
-        <Link className="pill pill--primary pill--block" to="/bills/new">
+        {/* Opens the camera right away; the photo is handed to the new-bill screen.
+            Closing the camera instead also goes there (see the cancel listener above). */}
+        <label className="pill pill--primary pill--block" htmlFor={cameraId}>
           New bill
-        </Link>
+          <input
+            ref={cameraInput}
+            id={cameraId}
+            type="file"
+            accept="image/*"
+            capture="environment"
+            className="visually-hidden"
+            onChange={(event) => {
+              const photos = [...(event.target.files ?? [])];
+              event.target.value = '';
+              if (photos.length) navigate('/bills/new', { state: { photos } });
+            }}
+          />
+        </label>
         <Link className="pill pill--night pill--block" to="/get-paid">
-          {wallets.length ? 'Edit how you get paid' : 'Set up how you get paid'}
+          {wallets.length ? 'Edit payment methods' : 'Set up payment methods'}
         </Link>
         {profile.bills.length === 0 && (
           <button type="button" className="pill pill--night pill--block" onClick={openSample} disabled={opening}>

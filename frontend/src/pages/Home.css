@@ -1,4 +1,4 @@
-.home {
+﻿.home {
   display: flex;
   flex-direction: column;
   min-height: 100dvh;
@@ -9,6 +9,67 @@
   color: var(--night-ink);
 }
 
+/* Landing: everything centered on the screen, logo first */
+/* Content centered in the space above; the buttons sit at the bottom, in thumb reach */
+.landing {
+  display: flex;
+  flex-direction: column;
+  min-height: 100dvh;
+  max-width: var(--column);
+  margin-inline: auto;
+  padding: calc(env(safe-area-inset-top) + var(--space-xl)) var(--gutter)
+    calc(env(safe-area-inset-bottom) + var(--space-xl));
+  color: var(--night-ink);
+}
+
+.landing__inner {
+  display: grid;
+  flex: 1;
+  align-content: center;
+  justify-items: center;
+  width: 100%;
+  text-align: center;
+}
+
+.landing__logo {
+  font-size: 4rem;
+  line-height: 1;
+  letter-spacing: -0.04em;
+}
+
+.landing__title {
+  display: grid;
+  gap: 0.15em;
+  justify-self: stretch;
+  margin-top: var(--space-2xl);
+  text-align: left;
+  font-size: 1.875rem;
+  font-weight: 750;
+  line-height: 1.12;
+  letter-spacing: -0.025em;
+}
+
+.landing__text {
+  justify-self: start;
+  max-width: 34ch;
+  margin-top: var(--space-lg);
+  text-align: left;
+  color: var(--night-muted);
+  text-wrap: pretty;
+}
+
+.landing__actions {
+  display: grid;
+  gap: var(--space-lg);
+  width: 100%;
+  margin-top: var(--space-xl);
+}
+
+/* Both buttons the same size */
+.landing__actions .pill {
+  min-height: 52px;
+}
+
 .home__bar {
   display: flex;
   align-items: center;
@@ -16,9 +77,9 @@
   min-height: 44px;
 }
 
+/* Greeting at the top, under the bar */
 .home__body {
-  margin-top: auto;
-  padding-bottom: var(--space-2xl);
+  margin-top: var(--space-xl);
 }
 
 .home__title {
@@ -28,15 +89,14 @@
   letter-spacing: -0.03em;
 }
 
-.home__text {
-  max-width: 34ch;
-  margin-top: var(--space-lg);
-  color: var(--night-muted);
-  text-wrap: pretty;
+.home__bills {
+  margin-top: var(--space-2xl);
 }
 
-.home__bills {
-  padding-bottom: var(--space-xl);
+/* The buttons stay at the bottom, in thumb reach */
+.home__actions {
+  margin-top: auto;
+  padding-top: var(--space-xl);
 }
 
 .home__bills-title {
@@ -71,5 +131,22 @@
 
 .home__actions {
   display: grid;
-  gap: var(--space-sm);
+  gap: var(--space-lg);
+}
+
+/* All buttons the same size, like the landing page */
+.home__actions .pill {
+  min-height: 52px;
+}
+
+/* Full-black screens paint their own background (the page itself is white) */
+.home,
+.landing {
+  background: var(--night);
+}
+
+/* Same black below the screen when Safari's bars collapse on scroll */
+.home,
+.landing {
+  box-shadow: 0 100vh 0 0 var(--night);
 }

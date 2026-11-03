@@ -22,6 +22,11 @@ export function supabaseVerifier({ url, serviceKey }) {
  * Creates the payer's `users` row the first time they call the API.
  */
 export function requirePayer({ verifyToken, repo }) {
+  // The payer's row barely changes, so keep it for a minute: saves a database
+  // round trip (about 100 ms to Supabase) on every payer request.
+  const users = new Map();
+  const USER_TTL_MS = 60_000;
+
   return async (req, res, next) => {
     const header = req.get('authorization') ?? '';
     const token = header.startsWith('Bearer ') ? header.slice(7).trim() : null;
@@ -30,6 +35,11 @@ export function requirePayer({ verifyToken, repo }) {
     const identity = await verifyToken(token);
     if (!identity) return res.status(401).json({ error: 'invalid_token' });
 
+    const cached = users.get(identity.id);
+    if (cached && cached.expires > Date.now()) {
+      req.user = cached.user;
+      return next();
+    }
     req.user =
       (await repo.getUser(identity.id)) ??
       (await repo.createUser({
@@ -37,6 +47,7 @@ export function requirePayer({ verifyToken, repo }) {
         email: identity.email,
         name: (identity.name || identity.email?.split('@')[0] || 'Payer').trim().slice(0, 60),
       }));
+    users.set(identity.id, { user: req.user, expires: Date.now() + USER_TTL_MS });
     next();
   };
 }

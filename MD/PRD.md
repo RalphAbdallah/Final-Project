@@ -123,7 +123,7 @@ M11 was added after the proposal (team decision, 2 November 2026) and replaces t
 
 ### M2 Create a bill (from photos)
 Team decision, 3 November 2026: bills are never typed in from scratch.
-1. **Photos:** the payer takes or picks one or more photos of the receipt (a long receipt can take two to four, in order).
+1. **Photos:** tapping New bill opens the camera straight away; the payer takes one or more photos of the receipt (up to 6, in order, one per part of a long receipt).
 2. **Read:** the AI (OpenAI vision model, called from Express so the key stays secret) reads the photos and returns only what is printed: venue, date, currency, each line as printed (quantity, name, printed amount, and a unit price if one is printed separately), printed subtotal, tax amount and rate, service, total, and the LBP rate if printed. **The AI never calculates.**
 3. **The app calculates:** unit price = printed line amount ÷ quantity (or the printed unit price); if the printed amounts only add up when read as unit prices, the app reads them that way. A line that doesn't divide evenly (e.g. $10.00 for 3) is split into lines that add up to the exact cent. Tax with "included" on the receipt is shown, not added (Q15). Tip guides, card slips and table numbers are ignored.
 4. **Review:** every field is editable: venue, date, currency, each item (name, quantity, unit price), tax, rate, service. Lines can be removed, and a missed line can be added. A check compares the app's total with the printed total: a match shows in green, a mismatch in amber with both amounts. The payer can still create the bill.
@@ -135,7 +135,7 @@ Team decision, 3 November 2026: bills are never typed in from scratch.
 **Accept when:** each receipt in `Receipts/` turns into a bill whose items, quantities, unit prices and total match the paper, after at most a few corrections.
 
 ### M3 Receipt photos
-- Photos are downscaled on the phone before upload (long side ≤ 2000 px, JPEG).
+- Photos are downscaled on the phone before upload (long side ≤ 1600 px, JPEG).
 - Stored in a private Supabase Storage bucket (`receipts`), one row per photo in `bill_photos`; served through short-lived signed URLs.
 - Guests can view them, to check the items against the paper (later iteration).
 
@@ -304,6 +304,7 @@ The five tables in the proposal stay, with the changes below: `users` (payers on
 - All input validated on the server; join and claim endpoints rate-limited.
 - Receipts and proof screenshots in private storage, served through short-lived signed URLs.
 - Secrets live only in server environment variables. The OpenAI key never reaches the browser.
+- **AI spend is capped** (added 3 November 2026): every receipt read that reaches OpenAI is recorded with its tokens (`ai_usage`). A payer gets at most 10 reads an hour, 30 a day and 150,000 tokens a day; all payers together get 2,000,000 tokens a day, the backstop against many sign-ups. One read at a time per payer. Limits are checked before photos are accepted, and the payer is told when they can try again. Failed reads count, since they still cost. All limits can be changed in `backend/.env`. A monthly budget cap should also be set in the OpenAI dashboard.
 - HTTPS everywhere (the clipboard API requires it).
 
 **Accessibility.** WCAG 2.2 AA. Touch targets at least 44 × 44 px. The core guest flow works with VoiceOver and TalkBack. Honors `prefers-reduced-motion` and `prefers-reduced-transparency`.

@@ -132,6 +132,35 @@ button.wallet-stack:active .wallet-card {
   transform: translateX(-4px);
 }
 
+/* Wallet app logos, all in the same rounded tile */
+.wallet-logo {
+  display: grid;
+  flex: none;
+  place-items: center;
+  overflow: hidden;
+  width: var(--size, 40px);
+  height: var(--size, 40px);
+  border-radius: 24%;
+  background: var(--day-sunken);
+  box-shadow: inset 0 0 0 1px oklch(0 0 0 / 0.06);
+}
+
+.wallet-logo img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+/* The Whish file has a white border around its icon: crop it off. */
+.wallet-logo--whish img {
+  transform: scale(1.12);
+}
+
+.wallet-logo--cash {
+  background: var(--wallet-cash);
+  color: var(--wallet-cash-ink);
+}
+
 /* Bottom sheet */
 .sheet-dialog {
   position: fixed;

@@ -1,5 +1,5 @@
-.getpaid .top {
-  padding-bottom: 2.25rem;
+﻿.getpaid .top {
+  padding-bottom: calc(2.25rem + var(--radius-sheet));
 }
 
 .getpaid__spacer {
@@ -9,15 +9,29 @@
 .getpaid__heading {
   position: relative;
   z-index: 1;
-  max-width: calc(100% - 4rem);
-  margin-top: var(--space-xl);
+  margin-top: var(--space-3xl);
+}
+
+/* "Link your / account" on the left, the wallet's logo on the right */
+.getpaid__heading--logo {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-lg);
+  max-width: none;
+  /* Higher than on the other steps, so this screen fits without scrolling */
+  margin-top: var(--space-lg);
+}
+
+.getpaid__heading--logo .wallet-logo {
+  box-shadow: 0 8px 24px oklch(0 0 0 / 0.4);
 }
 
 .getpaid__title {
-  font-size: var(--text-title);
+  font-size: 2.5rem;
   font-weight: 750;
-  line-height: 1.12;
-  letter-spacing: -0.02em;
+  line-height: 1.05;
+  letter-spacing: -0.03em;
 }
 
 .getpaid__lede {
@@ -64,8 +78,7 @@
   font-weight: 750;
 }
 
-.wallet-pick__text,
-.wallet-row__text {
+.wallet-pick__text {
   display: grid;
   flex: 1;
   min-width: 0;
@@ -75,8 +88,7 @@
   font-weight: 650;
 }
 
-.wallet-pick__meta,
-.wallet-row__link {
+.wallet-pick__meta {
   overflow: hidden;
   font-size: var(--text-caption);
   color: var(--ink-muted);
@@ -98,45 +110,82 @@
 }
 
 .wallet-pick:has(input:checked) .wallet-pick__check {
-  background: var(--lime-deep);
+  background: var(--lime);
   box-shadow: none;
-  color: var(--day);
+  color: var(--lime-ink);
 }
 
 .cash-note {
   display: flex;
   align-items: center;
   gap: var(--space-sm);
-  padding-top: var(--space-lg);
+  padding-top: var(--space-sm);
   font-size: var(--text-label);
+  font-weight: 300;
   color: var(--ink-muted);
 }
 
 /* Add: numbered steps (a real sequence), then the upload */
+/* Link step: steps at the top, the upload pinned to the bottom of the sheet, so a
+   wallet with fewer steps doesn't move the upload */
+.getpaid__sheet--link {
+  display: flex;
+  flex-direction: column;
+}
+
+.getpaid__sheet--link .steps {
+  padding-bottom: var(--space-xl);
+}
+
+.getpaid__sheet--link > :last-child {
+  margin-top: auto;
+}
+
+/* Numbered steps: grey circles joined by a faint solid line, circle to circle */
 .steps {
+  --step-size: 2rem;
+  --step-gap: 0.875rem;
   display: grid;
-  gap: var(--space-md);
+  gap: var(--step-gap);
   padding: var(--space-lg) 0 0;
   list-style: none;
 }
 
 .steps__item {
+  position: relative;
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: var(--space-md);
   font-size: var(--text-label);
+}
+
+/* Text lines up with the middle of its circle */
+.steps__item > span:last-child {
+  padding-top: calc((var(--step-size) - 1.45em) / 2);
+}
+
+.steps__item:not(:last-child)::before {
+  content: '';
+  position: absolute;
+  top: var(--step-size);
+  left: calc(var(--step-size) / 2 - 1px);
+  /* From this circle down to the next one (the item may be taller than its circle) */
+  height: calc(100% - var(--step-size) + var(--step-gap));
+  width: 2px;
+  background: oklch(0.7 0 0 / 0.12);
 }
 
 .steps__n {
   display: grid;
   flex: none;
   place-items: center;
-  width: 1.75rem;
-  height: 1.75rem;
+  width: var(--step-size);
+  height: var(--step-size);
   border-radius: 50%;
-  background: var(--day-sunken);
-  font-size: var(--text-caption);
-  font-weight: 700;
+  background: oklch(0.88 0 0);
+  color: var(--ink);
+  font-size: var(--text-label);
+  font-weight: 500;
 }
 
 .qr-upload {
@@ -261,29 +310,6 @@
 .qr-result__replace:has(input:focus-visible) {
   outline: 2px solid var(--lime-deep);
   outline-offset: 2px;
-}
-
-/* Done: saved wallets */
-.wallet-list {
-  padding: var(--space-sm) 0 0;
-  list-style: none;
-}
-
-.wallet-row {
-  display: flex;
-  align-items: center;
-  gap: var(--space-md);
-  min-height: 4.25rem;
-  border-bottom: 1px solid var(--day-line);
-}
-
-.dock__stack {
-  display: grid;
-  gap: var(--space-sm);
-}
-
-.text-button--muted {
-  color: var(--ink-muted);
 }
 
 @media (prefers-reduced-motion: reduce) {

@@ -1,4 +1,4 @@
-.share-screen {
+﻿.share-screen {
   display: flex;
   flex-direction: column;
   min-height: 100dvh;
@@ -72,4 +72,13 @@
   gap: var(--space-sm);
   margin-top: auto;
   padding-top: var(--space-xl);
+}
+
+/* Full-black screen: paints its own background (the page itself is white) */
+.share-screen {
+  background: var(--night);
+}
+
+.share-screen {
+  box-shadow: 0 100vh 0 0 var(--night);
 }

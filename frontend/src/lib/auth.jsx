@@ -1,6 +1,6 @@
 import { createContext, useContext, useEffect, useState } from 'react';
 import { Navigate, useLocation } from 'react-router-dom';
-import { setTokenSource } from './api.js';
+import { clearProfileCache, setTokenSource } from './api.js';
 import { supabase } from './supabase.js';
 
 const AuthContext = createContext({ session: undefined });
@@ -14,7 +14,11 @@ export function AuthProvider({ children }) {
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => setSession(data.session));
-    const { data } = supabase.auth.onAuthStateChange((_event, next) => setSession(next));
+    const { data } = supabase.auth.onAuthStateChange((event, next) => {
+      // Never show one payer's remembered profile to the next one on this device.
+      if (event === 'SIGNED_OUT' || event === 'SIGNED_IN') clearProfileCache();
+      setSession(next);
+    });
     return () => data.subscription.unsubscribe();
   }, []);
 
@@ -35,7 +39,7 @@ export function RequireAuth({ children }) {
 /** Friendly messages for Supabase auth errors. */
 export function authErrorMessage(error) {
   const messages = {
-    invalid_credentials: 'That email and password don’t match. Try again, or create an account.',
+    invalid_credentials: 'Login failed. Check your credentials or sign up.',
     user_already_exists: 'An account with this email already exists. Log in instead.',
     email_exists: 'An account with this email already exists. Log in instead.',
     weak_password: 'Choose a longer password: at least 8 characters.',

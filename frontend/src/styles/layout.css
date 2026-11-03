@@ -1,18 +1,22 @@
-/* The splIT screen: a dark top, a white sheet over it, a docked action bar. */
+﻿/* The splIT screen: a dark top, a white sheet over it, a docked action bar. */
 .screen {
   position: relative;
   display: flex;
   flex-direction: column;
   min-height: 100dvh;
+  /* When Safari's bars collapse on scroll, the viewport grows past 100dvh for a moment:
+     paint the screen's own white below it so no black gap shows. Doesn't add scroll. */
+  box-shadow: 0 100vh 0 0 var(--day);
   max-width: var(--column);
   margin-inline: auto;
-  background: var(--night);
+  background: var(--day);
   color: var(--night-ink);
 }
 
 .top {
   position: relative;
-  padding: calc(env(safe-area-inset-top) + var(--space-md)) var(--gutter) 2.5rem;
+  background: var(--night);
+  padding: calc(env(safe-area-inset-top) + var(--space-md)) var(--gutter) calc(2.5rem + var(--radius-sheet));
   overflow: hidden;
 }
 
@@ -24,11 +28,15 @@
   min-height: 44px;
 }
 
+/* The sheet slides up under the dark top's last 28px, so its rounded corners show black, not the white page. */
 .surface {
   position: relative;
   flex: 1;
-  padding: var(--space-sm) var(--gutter) calc(8.5rem + env(safe-area-inset-bottom));
+  margin-top: calc(var(--radius-sheet) * -1);
+  padding: var(--space-sm) var(--gutter) var(--space-xl);
   border-radius: var(--radius-sheet) var(--radius-sheet) 0 0;
+  /* Full-width row highlights (pressed, claimed) follow the rounded corners instead of poking past them */
+  overflow: clip;
   background: var(--day);
   color: var(--ink);
   box-shadow: 0 -12px 40px oklch(0 0 0 / 0.35);
@@ -53,20 +61,48 @@
   color: var(--ink-muted);
 }
 
-/* Docked action bar: the only translucent surface; items scroll under it. */
+/*
+ * Docked action bar. Part of the page (last in .screen) and sticky, so it sits at the
+ * bottom of short screens, stays in view on long ones, and needs no reserved space.
+ * Solid white: iPhone Safari tints its bottom toolbar from a solid element at the
+ * bottom edge, and skips translucent ones (it would show black).
+ */
 .dock {
-  position: fixed;
+  position: sticky;
   bottom: 0;
-  left: 50%;
   z-index: var(--z-dock);
-  width: min(100%, var(--column));
-  transform: translateX(-50%);
   padding: var(--space-md) var(--gutter) calc(var(--space-md) + env(safe-area-inset-bottom));
-  background: oklch(1 0 0 / 0.86);
-  -webkit-backdrop-filter: blur(20px) saturate(180%);
-  backdrop-filter: blur(20px) saturate(180%);
-  box-shadow: 0 -1px 0 oklch(0 0 0 / 0.06);
+  background: var(--day);
   color: var(--ink);
+}
+
+/*
+ * A fixed white layer behind the bottom half of light screens. When iPhone Safari
+ * bounces past the end, the page slides up but this stays put, so the gap is white
+ * instead of the black body.
+ */
+.screen::before {
+  content: '';
+  position: fixed;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  z-index: -1;
+  height: 50vh;
+  background: var(--day);
+  pointer-events: none;
+}
+
+/* Light screens without a dock still give Safari a solid white edge to tint its toolbar from. */
+.screen::after {
+  content: '';
+  position: fixed;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  height: 2px;
+  background: var(--day);
+  pointer-events: none;
 }
 
 .dock__row {
@@ -86,14 +122,6 @@
 .dock__hint.is-error {
   color: var(--danger);
   font-weight: 600;
-}
-
-@media (prefers-reduced-transparency: reduce) {
-  .dock {
-    background: var(--day);
-    -webkit-backdrop-filter: none;
-    backdrop-filter: none;
-  }
 }
 
 /* Toasts sit just above the dock */
@@ -127,6 +155,8 @@
   max-width: var(--column);
   margin-inline: auto;
   padding: var(--space-3xl) var(--gutter);
+  background: var(--night);
+  box-shadow: 0 100vh 0 0 var(--night);
   color: var(--night-ink);
   text-align: center;
 }

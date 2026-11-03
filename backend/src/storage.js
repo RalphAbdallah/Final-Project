@@ -6,6 +6,11 @@ export function supabaseStorage(supabase) {
       const { error } = await bucket().upload(path, buffer, { contentType, upsert: false });
       if (error) throw new Error(`Photo upload failed: ${error.message}`);
     },
+    async remove(paths) {
+      if (paths.length === 0) return;
+      const { error } = await bucket().remove(paths);
+      if (error) throw new Error(`Photo removal failed: ${error.message}`);
+    },
     async signedUrl(path, seconds = 600) {
       const { data, error } = await bucket().createSignedUrl(path, seconds);
       if (error) throw new Error(`Signed URL failed: ${error.message}`);

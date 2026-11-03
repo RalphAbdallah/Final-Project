@@ -1,5 +1,5 @@
-.auth .top {
-  padding-bottom: 2.25rem;
+﻿.auth .top {
+  padding-bottom: calc(2.25rem + var(--radius-sheet));
 }
 
 .auth .wordmark {
@@ -11,18 +11,10 @@
 }
 
 .auth__title {
-  font-size: var(--text-title);
+  font-size: 2.75rem;
   font-weight: 750;
-  line-height: 1.12;
-  letter-spacing: -0.02em;
-}
-
-.auth__lede {
-  max-width: 34ch;
-  margin-top: var(--space-sm);
-  font-size: var(--text-label);
-  color: var(--night-muted);
-  text-wrap: pretty;
+  line-height: 1.05;
+  letter-spacing: -0.03em;
 }
 
 .auth .surface {
@@ -35,12 +27,24 @@
   padding-top: var(--space-lg);
 }
 
+/* On the auth pages, errors are just red text, no box */
+.auth-form .form-error {
+  /* Sit close under the field it's about: the form's 16px gap minus 10px */
+  margin-top: -10px;
+  padding: 0;
+  background: none;
+  font-size: var(--text-caption);
+  font-weight: 400;
+  text-align: center;
+  text-wrap: balance;
+}
+
 .auth-form .pill--primary {
   margin-top: var(--space-sm);
 }
 
 .auth__switch {
-  margin-top: var(--space-xl);
+  margin-top: var(--space-md);
   font-size: var(--text-label);
   color: var(--ink-muted);
   text-align: center;

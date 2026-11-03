@@ -15,18 +15,41 @@ if (!process.env.OPENAI_API_KEY) {
 }
 
 const { SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY } = process.env;
+
+/**
+ * Receipt reader settings. Measured 2026-11-03 on Receipts/ (2 rounds each):
+ * gpt-4.1-mini read all three exactly in 2-7 s, about twice as fast as gpt-5-mini
+ * (5-13 s at low effort) for the same tokens. Reasoning effort is only sent to
+ * reasoning models (gpt-5 family, o-series); others reject it.
+ */
+function readerOptions() {
+  const model = process.env.OPENAI_MODEL || 'gpt-4.1-mini';
+  const reasons = /^(gpt-5|o\d)/.test(model);
+  return {
+    apiKey: process.env.OPENAI_API_KEY,
+    model,
+    reasoningEffort: reasons ? process.env.OPENAI_REASONING_EFFORT || 'low' : undefined,
+    // Copying numbers must not vary between tries of the same photo: no randomness.
+    // (Reasoning models don't accept temperature.)
+    temperature: reasons ? undefined : 0,
+  };
+}
 const supabaseAdmin = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
   auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
 });
 
+const pool = createPool(process.env.DATABASE_URL);
 const app = createApp({
-  repo: createPostgresRepo(createPool(process.env.DATABASE_URL)),
+  repo: createPostgresRepo(pool),
   verifyToken: supabaseVerifier({ url: SUPABASE_URL, serviceKey: SUPABASE_SERVICE_ROLE_KEY }),
-  readReceipt: process.env.OPENAI_API_KEY
-    ? openAiReceiptReader({ apiKey: process.env.OPENAI_API_KEY, model: process.env.OPENAI_MODEL || 'gpt-5-mini' })
-    : null,
+  readReceipt: process.env.OPENAI_API_KEY ? openAiReceiptReader(readerOptions()) : null,
   storage: supabaseStorage(supabaseAdmin),
 });
 
 const port = Number(process.env.PORT) || 3001;
-app.listen(port, () => console.log(`splIT API on http://localhost:${port}`));
+app.listen(port, () => {
+  console.log(`splIT API on http://localhost:${port}`);
+  // Open the database connection now (TLS to Supabase takes ~1-2 s), so the first
+  // request after a start or a Render wake-up doesn't pay for it.
+  pool.query('select 1').catch((err) => console.error('Database warm-up failed:', err.message));
+});

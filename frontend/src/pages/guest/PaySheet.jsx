@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import Amount from '../../components/Amount.jsx';
 import Icon from '../../components/Icon.jsx';
 import Sheet from '../../components/Sheet.jsx';
+import WalletLogo from '../../components/WalletLogo.jsx';
 import { formatMoney, plainAmount } from '../../lib/money.js';
 import { walletName } from '../../lib/wallets.js';
 
@@ -76,9 +77,7 @@ export default function PaySheet({ open, onClose, me, payerName, currency, busy,
               checked={selected === id}
               onChange={() => onChooseMethod(id)}
             />
-            <span className={`method__swatch wallet--${id}`} aria-hidden="true">
-              {id === 'cash' ? <Icon name="cash" size={18} /> : walletName(id)[0]}
-            </span>
+            <WalletLogo wallet={id} size={36} />
             <span className="method__name">{walletName(id)}</span>
             <span className="method__check" aria-hidden="true">
               <Icon name="check" size={16} />

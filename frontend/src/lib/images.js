@@ -1,8 +1,9 @@
 /**
- * Downscales a photo on the phone before upload (PRD M3): long side ≤ 2000 px,
- * JPEG. Keeps receipts sharp enough to read while cutting upload size.
+ * Downscales a photo on the phone before upload (PRD M3): long side ≤ 1600 px,
+ * JPEG. Receipts stay sharp enough to read (the 1600 px Castle photo reads
+ * exactly) while the upload and the AI's image tokens shrink.
  */
-export async function prepareReceiptPhoto(file, maxSide = 2000, quality = 0.85) {
+export async function prepareReceiptPhoto(file, maxSide = 1600, quality = 0.85) {
   const bitmap = await createImageBitmap(file, { imageOrientation: 'from-image' });
   try {
     const scale = Math.min(1, maxSide / Math.max(bitmap.width, bitmap.height));

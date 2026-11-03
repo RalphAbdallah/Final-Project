@@ -1,5 +1,5 @@
-.newbill .top {
-  padding-bottom: 2.25rem;
+﻿.newbill .top {
+  padding-bottom: calc(2.25rem + var(--radius-sheet));
 }
 
 .newbill__spacer {
@@ -96,20 +96,76 @@
 }
 
 /* While reading: a lime line sweeps down each photo */
+/*
+ * Scan line: slides down with a dimmed lime trail above it, pauses at the bottom
+ * while that trail fades away, slides back up with a trail below it, fades that
+ * at the top, and repeats. The trails' strength is animatable via @property.
+ * Trails switch on only while the line is just off the photo, so nothing flicks.
+ */
+@property --trail-above {
+  syntax: '<number>';
+  inherits: false;
+  initial-value: 1;
+}
+
+@property --trail-below {
+  syntax: '<number>';
+  inherits: false;
+  initial-value: 0;
+}
+
 .photo-tile__scan {
   position: absolute;
   inset: 0;
-  background: linear-gradient(to bottom, transparent 0%, oklch(0.9 0.18 124 / 0.35) 48%, var(--lime) 50%, transparent 52%);
+  background: linear-gradient(
+    to bottom,
+    transparent 0%,
+    oklch(0.9 0.18 124 / calc(0.35 * var(--trail-above))) 48%,
+    var(--lime) 50%,
+    oklch(0.9 0.18 124 / calc(0.35 * var(--trail-below))) 52%,
+    transparent 100%
+  );
   background-size: 100% 220%;
-  animation: receipt-scan 1.8s var(--ease-out) infinite;
+  animation: receipt-scan 3.2s infinite;
 }
 
 @keyframes receipt-scan {
-  from {
+  /* Down, trail above */
+  0% {
+    --trail-above: 1;
+    --trail-below: 0;
     background-position: 0 100%;
+    animation-timing-function: ease-in-out;
   }
-  to {
+  40% {
+    --trail-above: 1;
     background-position: 0 0%;
+    animation-timing-function: ease-out;
+  }
+  /* At the bottom: the trail above fades away */
+  50% {
+    --trail-above: 0;
+    --trail-below: 0;
+    background-position: 0 0%;
+    animation-timing-function: step-end;
+  }
+  /* Up, trail below (switched on while the line is still off the bottom edge) */
+  50.1% {
+    --trail-above: 0;
+    --trail-below: 1;
+    background-position: 0 0%;
+    animation-timing-function: ease-in-out;
+  }
+  90% {
+    --trail-below: 1;
+    background-position: 0 100%;
+    animation-timing-function: ease-out;
+  }
+  /* At the top: the trail below fades away */
+  100% {
+    --trail-above: 0;
+    --trail-below: 0;
+    background-position: 0 100%;
   }
 }
 
@@ -154,6 +210,16 @@
 .photo-add__title {
   font-size: var(--text-label);
   font-weight: 650;
+}
+
+/* Photo step dock: "Choose from photos" right above "Read receipt" */
+.newbill__dock {
+  display: grid;
+  gap: var(--space-sm);
+}
+
+.newbill__dock .pill--day {
+  min-height: 52px;
 }
 
 .newbill__error {

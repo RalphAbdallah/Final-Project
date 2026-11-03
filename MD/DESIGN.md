@@ -157,7 +157,13 @@ Mobile first, designed at 390 px wide. One column; on wider screens the app stay
 
 ## Elevation & Depth
 
-Depth comes from the night/day contrast, not shadows. The sheet casts one soft upward shadow onto the night area. Bottom sheets (tip, pay) use a dimming scrim and push nothing else; they are modal tasks. The docked action bar is the only translucent surface: `day` at 85% with `backdrop-filter: blur(20px)` so items scroll under it, solid when reduced transparency is on.
+Depth comes from the night/day contrast, not shadows. The sheet casts one soft upward shadow onto the night area. Bottom sheets (tip, pay) use a dimming scrim and push nothing else; they are modal tasks. **iPhone Safari rules (learned on a real iPhone 17, 2026-11-03):**
+- The status bar tint follows `body`'s background, so `body` is `night` (matches the dark tops). Light screens (`.screen`) paint their own `day`.
+- The bottom toolbar tint comes from a **solid** element at the bottom edge; translucent ones are skipped. So the docked action bar is solid `day`, with no blur and no separator line (removed at the team's request), and light screens keep a 2px solid white strip fixed at the bottom.
+- Scrolling past the end bounces and reveals `body`'s black. Light screens put a fixed white layer behind the bottom half of the viewport (`.screen::before`, `z-index: -1`) so the bounce shows white.
+- The dock is part of the page (`position: sticky; bottom: 0`, last child of `.screen`), not fixed over it, so sheets need no reserved bottom padding and short screens don't scroll.
+- Things you tap are not text-selectable (no long-press Copy/Look Up menu); inputs stay selectable.
+- Full-width row highlights are clipped to the sheet's rounded corners (`.surface { overflow: clip }`).
 
 ## Shapes
 

@@ -1,13 +1,27 @@
-*,
+﻿*,
 *::before,
 *::after {
   box-sizing: border-box;
 }
 
+/*
+ * iPhone Safari tints the status bar from body's background, so html and body are
+ * black to match the dark tops. Light screens (.screen) paint their own white, and
+ * the bottom toolbar follows the white theme-color in index.html.
+ */
 html {
   -webkit-text-size-adjust: 100%;
   text-size-adjust: 100%;
   background: var(--night);
+}
+
+/*
+ * On light screens, whatever Safari shows past the page (the gap while its bars collapse,
+ * or the bounce when scrolling past the end) is html's background: make it white there.
+ * The status-bar tint follows body, which stays black.
+ */
+html:has(.screen) {
+  background: var(--day);
 }
 
 html:has(dialog[open]) {
@@ -21,6 +35,9 @@ body {
   font-size: var(--text-body);
   line-height: 1.45;
   color: var(--ink);
+  /* Plain black: Safari tints the status bar from it, and it's what shows for a moment
+     while the app loads or switches screens. (A half-black, half-white version showed as a
+     split-screen flash; light screens now get their white bottom from .screen::before.) */
   background: var(--night);
   -webkit-font-smoothing: antialiased;
   -webkit-tap-highlight-color: transparent;
@@ -58,6 +75,29 @@ input {
 
 button {
   cursor: pointer;
+}
+
+/*
+ * Things you tap behave like app controls, not text: a long press doesn't select
+ * their words or pop up the copy/link menu. Text fields keep normal selection.
+ */
+label,
+button,
+a,
+[role='button'],
+[role='radio'],
+.item,
+.wallet-logo,
+.wallet-stack {
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+}
+
+input,
+textarea {
+  -webkit-user-select: text;
+  user-select: text;
 }
 
 img {
@@ -131,6 +171,16 @@ img {
 
 .pill:active:not(:disabled) {
   transform: scale(0.97);
+}
+
+/* A pill that wraps a hidden file input (e.g. "New bill" opening the camera) shows the input's focus */
+.pill:has(input:focus-visible) {
+  outline: 2px solid var(--focus, var(--lime-deep));
+  outline-offset: 2px;
+}
+
+label.pill {
+  cursor: pointer;
 }
 
 .pill:disabled {

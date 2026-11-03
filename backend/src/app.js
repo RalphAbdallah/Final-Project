@@ -9,8 +9,9 @@ import { shareRoutes } from './routes/share.js';
  * @param {(token: string) => Promise<{id: string, email: string, name?: string} | null>} deps.verifyToken
  * @param {(images: {mime: string, base64: string}[]) => Promise<object>} [deps.readReceipt]  AI reader (receipts/openai.js)
  * @param {{ upload: Function }} deps.storage  receipt photo storage (storage.js)
+ * @param {object} [deps.aiLimits]  receipt-reading limits (receipts/limits.js); defaults from .env
  */
-export function createApp({ repo, verifyToken, readReceipt, storage }) {
+export function createApp({ repo, verifyToken, readReceipt, storage, aiLimits }) {
   const app = express();
   app.disable('x-powered-by');
   app.use(cors({ origin: process.env.CLIENT_ORIGIN ? process.env.CLIENT_ORIGIN.split(',') : true }));
@@ -19,7 +20,7 @@ export function createApp({ repo, verifyToken, readReceipt, storage }) {
 
   app.get('/api/health', (req, res) => res.json({ ok: true }));
   app.use('/api/share', shareRoutes(repo));
-  app.use('/api/me', meRoutes({ repo, verifyToken, readReceipt, storage }));
+  app.use('/api/me', meRoutes({ repo, verifyToken, readReceipt, storage, aiLimits }));
 
   app.use('/api', (req, res) => res.status(404).json({ error: 'not_found' }));
   app.use((err, req, res, next) => {
