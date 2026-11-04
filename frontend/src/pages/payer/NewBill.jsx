@@ -7,10 +7,14 @@ import Stepper from '../../components/Stepper.jsx';
 import { useToast } from '../../components/Toast.jsx';
 import { api } from '../../lib/api.js';
 import { prepareReceiptPhoto } from '../../lib/images.js';
+import { clearNewBill, loadNewBill, saveNewBill } from '../../lib/newBillStore.js';
 import { formatMoney, parseMoney, plainAmount } from '../../lib/money.js';
 import './newbill.css';
 
 const MAX_PHOTOS = 6;
+// LBP per $1 when the receipt prints no rate (Banque du Liban's rate since 2024).
+// The payer can change it on the review screen.
+const DEFAULT_LBP_RATE = 89_500;
 
 const READ_ERRORS = {
   not_a_receipt: "That doesn't look like a receipt. Retake the photo with the whole receipt in view.",
@@ -19,6 +23,7 @@ const READ_ERRORS = {
   offline: "You're offline. Check your connection and try again.",
   photo_too_large: 'One of the photos is too large. Retake it and try again.',
   ai_timeout: 'Reading is slow right now. Try again in a moment.',
+  several_receipts: 'You can only select 1 receipt.',
 };
 
 /** Reading limits (backend receipts/limits.js): say plainly when they can try again. */
@@ -34,11 +39,20 @@ function limitMessage(err) {
   }[err.code];
 }
 
+/** Which photos the AI couldn't read: "Photo 2 isn't clear…", "Photos 1 and 3 aren't clear…". */
+function unclearMessage(numbers, count) {
+  if (count === 1) return "This photo isn't clear. Retake it and try again.";
+  if (numbers.length === 1) return `Photo ${numbers[0]} isn't clear. Retake it and try again.`;
+  return `Photos ${numbers.slice(0, -1).join(', ')} and ${numbers.at(-1)} aren't clear. Retake them and try again.`;
+}
+
 let nextKey = 0;
-const withKey = (item) => ({ key: `item-${nextKey++}`, ...item });
+// Unique across reloads too: restored photos and items keep the keys they were saved with.
+const newKey = (kind) => `${kind}-${Date.now().toString(36)}-${nextKey++}`;
+const withKey = (item) => ({ key: newKey('item'), ...item });
 
 /** What the app calculates from the reviewed draft: items plus extras added on top. */
-function totals(draft) {
+export function totals(draft) {
   const subtotal = draft.items.reduce((acc, item) => acc + item.price * item.quantity, 0);
   const total = subtotal + (draft.taxIncluded ? 0 : draft.tax) + draft.service;
   return { subtotal, total };
@@ -50,31 +64,71 @@ export default function NewBill() {
   const [photos, setPhotos] = useState([]);
   const [phase, setPhase] = useState('photos');
   const [error, setError] = useState(null);
+  // Photos the AI said it couldn't read (ids), outlined until retaken.
+  const [unclear, setUnclear] = useState([]);
   const [draft, setDraft] = useState(null);
   const [photoPaths, setPhotoPaths] = useState([]);
+  // Which photos the current draft was read from (their ids, in order).
+  const [readKey, setReadKey] = useState(null);
   const [editing, setEditing] = useState(null);
   const [extrasOpen, setExtrasOpen] = useState(false);
   const [viewing, setViewing] = useState(null);
   const [creating, setCreating] = useState(false);
   const [preparing, setPreparing] = useState(false);
   const [toast, showToast] = useToast();
+  const lastSwitch = useRef(null);
+  const rateId = useId();
+  const [editingRate, setEditingRate] = useState(false);
   const photosRef = useRef(photos);
   photosRef.current = photos;
 
   useEffect(() => () => photosRef.current.forEach((p) => URL.revokeObjectURL(p.url)), []);
 
-  // "New bill" on home opens the camera and hands the photo over: add it once,
-  // then clear it from history so a reload doesn't add it again.
+  // "New bill" on home opens the camera and hands the photo over: start a fresh bill
+  // with it, and clear it from history so a reload doesn't add it again. Otherwise,
+  // pick up the bill in progress from before a reload.
   const location = useLocation();
-  const handedOver = useRef(false);
+  const started = useRef(false);
+  const [restored, setRestored] = useState(false);
   useEffect(() => {
+    if (started.current) return;
+    started.current = true;
     const handed = location.state?.photos;
-    if (handedOver.current || !handed?.length) return;
-    handedOver.current = true;
-    addFiles(handed);
-    navigate(location.pathname, { replace: true, state: null });
+    if (handed?.length) {
+      navigate(location.pathname, { replace: true, state: null });
+      clearNewBill().then(() => setRestored(true));
+      addFiles(handed);
+      return;
+    }
+    loadNewBill().then(({ photos: saved, review }) => {
+      if (saved?.length) setPhotos(saved.map((p) => ({ ...p, url: URL.createObjectURL(p.blob) })));
+      if (review?.draft) {
+        setDraft(review.draft);
+        setPhotoPaths(review.photoPaths);
+        setReadKey(review.readKey);
+        lastSwitch.current = review.lastSwitch;
+        setPhase(review.phase);
+      }
+      setRestored(true);
+    });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Save as it changes, so a reload keeps it. Photos and review apart: typing a fix
+  // shouldn't rewrite the photos. A read in progress is saved as the photos screen.
+  useEffect(() => {
+    if (restored) saveNewBill('photos', photos.map(({ id, blob }) => ({ id, blob })));
+  }, [restored, photos]);
+  useEffect(() => {
+    if (!restored) return;
+    saveNewBill('review', {
+      draft,
+      photoPaths,
+      readKey,
+      phase: phase === 'review' ? 'review' : 'photos',
+      lastSwitch: lastSwitch.current,
+    });
+  }, [restored, draft, photoPaths, readKey, phase]);
 
   async function addFiles(fileList) {
     const files = [...fileList].slice(0, MAX_PHOTOS - photos.length);
@@ -85,7 +139,7 @@ export default function NewBill() {
     for (const file of files) {
       try {
         const blob = await prepareReceiptPhoto(file);
-        added.push({ id: `photo-${nextKey++}`, blob, url: URL.createObjectURL(blob) });
+        added.push({ id: newKey('photo'), blob, url: URL.createObjectURL(blob) });
       } catch {
         showToast("One photo couldn't be opened. Try taking it again.");
       }
@@ -100,18 +154,45 @@ export default function NewBill() {
       if (photo) URL.revokeObjectURL(photo.url);
       return list.filter((p) => p.id !== id);
     });
+    if (unclear.includes(id)) {
+      const rest = unclear.filter((u) => u !== id);
+      setUnclear(rest);
+      // The unclear photos are gone: the message about them goes too.
+      if (rest.length === 0) setError(null);
+    }
   }
 
   async function read() {
+    // Same photos as the last read (none added, removed or reordered): reuse that
+    // result, with any corrections made since, instead of reading them again.
+    const key = photos.map((p) => p.id).join('|');
+    if (draft && readKey === key) {
+      setError(null);
+      setPhase('review');
+      return;
+    }
     setPhase('reading');
     setError(null);
+    setUnclear([]);
     try {
       const result = await api.readReceipt(photos.map((p) => p.blob));
-      setDraft({ ...result.draft, items: result.draft.items.map(withKey) });
+      setDraft({
+        ...result.draft,
+        items: result.draft.items.map(withKey),
+        lbpRate: result.draft.lbpRate ?? DEFAULT_LBP_RATE,
+      });
+      lastSwitch.current = null;
       setPhotoPaths(result.photos);
+      setReadKey(key);
       setPhase('review');
     } catch (err) {
       setPhase('photos');
+      if (err.code === 'unclear_photos') {
+        const numbers = err.data.photos ?? [];
+        setUnclear(numbers.map((n) => photos[n - 1]?.id).filter(Boolean));
+        setError(unclearMessage(numbers, photos.length));
+        return;
+      }
       setError(limitMessage(err) ?? READ_ERRORS[err.code] ?? "Couldn't read the receipt right now. Try again in a moment.");
     }
   }
@@ -126,6 +207,7 @@ export default function NewBill() {
         items: items.map(({ name, quantity, price }) => ({ name: name.trim(), quantity, price })),
         photos: photoPaths,
       });
+      await clearNewBill();
       navigate(`/bills/${id}/share`, { replace: true });
     } catch (err) {
       setCreating(false);
@@ -136,15 +218,48 @@ export default function NewBill() {
   const update = (changes) => setDraft((d) => ({ ...d, ...changes }));
 
   function switchCurrency(currency) {
-    if (currency === draft.currency) return;
-    // Keep the digits as printed: $7.50 (750 cents) becomes LBP 7.50 → 8, and back.
-    const convert = (minor) => (currency === 'LBP' ? Math.round(minor / 100) : minor * 100);
+    if (currency === draft.currency || !draft.lbpRate) return;
+    // Converts at the exchange rate: $3.75 at 89,500 is LBP 335,625, and back.
+    const rate = draft.lbpRate;
+    const convert = (minor) => (currency === 'LBP' ? Math.round((minor * rate) / 100) : Math.round((minor * 100) / rate));
+    // Converting rounds, so going back to the receipt's own currency restores each
+    // amount as printed (unless it was edited since) instead of converting it again.
+    // Going away from it always converts at the current rate.
+    const original = lastSwitch.current?.original ?? draft.currency;
+    const undo = currency === original && lastSwitch.current ? lastSwitch.current.amounts : {};
+    const amounts = {};
+    const change = (id, minor) => {
+      if (minor == null) return minor;
+      const next = undo[id]?.after === minor ? undo[id].before : convert(minor);
+      amounts[id] = { before: minor, after: next };
+      return next;
+    };
+    lastSwitch.current = { original, amounts };
     update({
       currency,
-      tax: convert(draft.tax),
-      service: convert(draft.service),
-      printedTotal: draft.printedTotal == null ? null : convert(draft.printedTotal),
-      items: draft.items.map((item) => ({ ...item, price: convert(item.price) })),
+      tax: change('tax', draft.tax),
+      service: change('service', draft.service),
+      items: draft.items.map((item) => ({ ...item, price: change(item.key, item.price) })),
+    });
+  }
+
+  function changeRate(text) {
+    const lbpRate = Number(text.replace(/\D/g, '').slice(0, 7)) || null;
+    const last = lastSwitch.current;
+    if (!lbpRate || last?.original !== 'USD' || draft.currency !== 'LBP') return update({ lbpRate });
+    // Showing a dollar receipt in pounds: reconvert from the printed dollars as the
+    // rate is typed. Amounts edited in pounds since the switch stay as typed.
+    const redo = (id, minor) => {
+      const entry = last.amounts[id];
+      if (!entry || entry.after !== minor) return minor;
+      entry.after = Math.round((entry.before * lbpRate) / 100);
+      return entry.after;
+    };
+    update({
+      lbpRate,
+      tax: redo('tax', draft.tax),
+      service: redo('service', draft.service),
+      items: draft.items.map((item) => ({ ...item, price: redo(item.key, item.price) })),
     });
   }
 
@@ -152,21 +267,25 @@ export default function NewBill() {
     return (
       <PhotoStep
         photos={photos}
+        unclear={unclear}
         reading={phase === 'reading'}
         preparing={preparing}
         error={error}
         onAdd={addFiles}
         onRemove={removePhoto}
         onRead={read}
-        onBack={() => navigate('/')}
+        onBack={() => {
+          // Back from the photos is cancel: this bill is dropped.
+          clearNewBill();
+          navigate('/');
+        }}
         toast={toast}
       />
     );
   }
 
-  const { total } = totals(draft);
+  const { subtotal, total } = totals(draft);
   const money = (minor) => formatMoney(minor, draft.currency);
-  const matches = draft.printedTotal == null ? null : draft.printedTotal === total;
   const canCreate = draft.venue.trim() && draft.items.length > 0 && draft.items.every((i) => i.name.trim());
   const editingItem = editing === 'new' ? null : draft.items.find((i) => i.key === editing);
 
@@ -183,17 +302,6 @@ export default function NewBill() {
         <div className="newbill__summary">
           <p className="newbill__label">Bill total</p>
           <Amount minor={total} currency={draft.currency} className="amount--hero" />
-          {matches === true && (
-            <p className="check check--ok">
-              <Icon name="check" size={16} /> Matches the receipt
-            </p>
-          )}
-          {matches === false && (
-            <p className="check check--off num">
-              <Icon name="alert" size={16} /> Receipt says {money(draft.printedTotal)}. Check the items below.
-            </p>
-          )}
-          {matches === null && <p className="check num">No total printed on the receipt to compare with.</p>}
         </div>
       </header>
 
@@ -211,23 +319,46 @@ export default function NewBill() {
             Details
           </h2>
           <Field label="Place" value={draft.venue} onChange={(venue) => update({ venue })} maxLength={80} />
-          <div className="review-row">
-            <Field label="Date" type="date" value={draft.date} onChange={(date) => date && update({ date })} />
-            <div className="field">
-              <span className="field__label" id="currency-label">
-                Currency
-              </span>
-              <div className="segmented" role="radiogroup" aria-labelledby="currency-label">
-                {['USD', 'LBP'].map((c) => (
-                  <button key={c} type="button" role="radio" aria-checked={draft.currency === c} onClick={() => switchCurrency(c)}>
-                    {c}
-                  </button>
-                ))}
-              </div>
+          <Field label="Date" type="date" value={draft.date} onChange={(date) => date && update({ date })} />
+          <div className="field">
+            <span className="field__label" id="currency-label">
+              Currency
+            </span>
+            <div className="segmented" role="radiogroup" aria-labelledby="currency-label">
+              {['USD', 'LBP'].map((c) => (
+                <button
+                  key={c}
+                  type="button"
+                  role="radio"
+                  aria-checked={draft.currency === c}
+                  disabled={draft.currency !== c && !draft.lbpRate}
+                  onClick={() => switchCurrency(c)}
+                >
+                  {c}
+                </button>
+              ))}
             </div>
           </div>
-          {draft.lbpRate && (
-            <p className="field__hint num">Rate on the receipt: $1 = LBP {draft.lbpRate.toLocaleString('en-US')}</p>
+          {draft.currency === 'LBP' && (
+            <div className="field">
+              <label htmlFor={rateId} className="field__label">
+                Exchange rate
+              </label>
+              <div className="money-input rate-input">
+                <span aria-hidden="true">$1 = LBP</span>
+                <input
+                  id={rateId}
+                  className="num"
+                  inputMode="numeric"
+                  // Commas only when not typing: reformatting mid-edit moves the caret.
+                  value={(editingRate ? draft.lbpRate : draft.lbpRate?.toLocaleString('en-US')) ?? ''}
+                  onFocus={() => setEditingRate(true)}
+                  onBlur={() => setEditingRate(false)}
+                  onChange={(e) => changeRate(e.target.value)}
+                  aria-invalid={!draft.lbpRate}
+                />
+              </div>
+            </div>
           )}
         </section>
 
@@ -265,16 +396,25 @@ export default function NewBill() {
           </h2>
           <button type="button" className="review-extras" onClick={() => setExtrasOpen(true)}>
             <span className="review-extras__row num">
-              <span>
-                Tax{draft.taxRate != null ? ` (${draft.taxRate}%)` : ''}
-                {draft.taxIncluded ? ', included in prices' : ''}
+              <span>Subtotal</span>
+              <span>{money(subtotal)}</span>
+            </span>
+            {/* Tax and service only when there are some; Edit adds them otherwise */}
+            {draft.tax > 0 && (
+              <span className="review-extras__row num">
+                <span>
+                  Tax{draft.taxRate != null ? ` (${draft.taxRate}%)` : ''}
+                  {draft.taxIncluded ? ', included in prices' : ''}
+                </span>
+                <span>{money(draft.tax)}</span>
               </span>
-              <span>{money(draft.tax)}</span>
-            </span>
-            <span className="review-extras__row num">
-              <span>Service</span>
-              <span>{money(draft.service)}</span>
-            </span>
+            )}
+            {draft.service > 0 && (
+              <span className="review-extras__row num">
+                <span>Service</span>
+                <span>{money(draft.service)}</span>
+              </span>
+            )}
             <span className="review-extras__edit">Edit tax and service</span>
           </button>
         </section>
@@ -319,9 +459,10 @@ export default function NewBill() {
   );
 }
 
-function PhotoStep({ photos, reading, preparing, error, onAdd, onRemove, onRead, onBack, toast }) {
+function PhotoStep({ photos, unclear, reading, preparing, error, onAdd, onRemove, onRead, onBack, toast }) {
   const inputId = useId();
   const libraryId = useId();
+  const [viewing, setViewing] = useState(null);
   return (
     <div className="screen newbill">
       <header className="top on-night">
@@ -345,8 +486,15 @@ function PhotoStep({ photos, reading, preparing, error, onAdd, onRemove, onRead,
       <main className="surface on-day">
         <ol className={`photo-grid${reading ? ' is-reading' : ''}`} aria-label="Photos, in order">
           {photos.map((photo, i) => (
-            <li key={photo.id} className="photo-tile">
-              <img src={photo.url} alt={`Receipt photo ${i + 1}`} />
+            <li key={photo.id} className={`photo-tile${unclear.includes(photo.id) ? ' is-unclear' : ''}`}>
+              <button
+                type="button"
+                className="photo-tile__open"
+                onClick={() => setViewing(i)}
+                aria-label={`View photo ${i + 1}${unclear.includes(photo.id) ? ', not clear' : ''}`}
+              >
+                <img src={photo.url} alt="" />
+              </button>
               <span className="photo-tile__n num" aria-hidden="true">
                 {i + 1}
               </span>
@@ -409,15 +557,18 @@ function PhotoStep({ photos, reading, preparing, error, onAdd, onRemove, onRead,
           </label>
         )}
         <button type="button" className="pill pill--primary pill--block" onClick={onRead} disabled={photos.length === 0 || reading || preparing}>
-          {reading ? 'Reading…' : photos.length > 1 ? `Read receipt (${photos.length} photos)` : 'Read receipt'}
+          {reading ? 'Reading…' : 'Read receipt'}
         </button>
       </div>
+      <Sheet open={viewing !== null} onClose={() => setViewing(null)} title={`Photo ${(viewing ?? 0) + 1} of ${photos.length}`}>
+        {viewing !== null && <img className="photo-full" src={photos[viewing]?.url} alt={`Receipt photo ${viewing + 1}`} />}
+      </Sheet>
       {toast}
     </div>
   );
 }
 
-function Field({ label, value, onChange, type = 'text', ...rest }) {
+export function Field({ label, value, onChange, type = 'text', ...rest }) {
   const id = useId();
   return (
     <div className="field">
@@ -451,7 +602,8 @@ function MoneyField({ label, currency, value, onChange, invalid }) {
   );
 }
 
-function ItemSheet({ open, item, currency, onClose, onSave, onDelete }) {
+/** Edit or add an item. `minQuantity`: on a shared bill, units already claimed can't be taken away. */
+export function ItemSheet({ open, item, currency, onClose, onSave, onDelete, minQuantity = 1 }) {
   const [name, setName] = useState('');
   const [quantity, setQuantity] = useState(1);
   const [price, setPrice] = useState('');
@@ -499,7 +651,14 @@ function ItemSheet({ open, item, currency, onClose, onSave, onDelete }) {
         <div className="review-row">
           <div className="field">
             <span className="field__label">Quantity</span>
-            <Stepper value={quantity} min={1} max={999} label="quantity" onChange={(q) => setQuantity(Math.max(1, q))} />
+            <Stepper
+              value={quantity}
+              min={Math.max(1, minQuantity)}
+              max={999}
+              label="quantity"
+              onChange={(q) => setQuantity(Math.max(1, minQuantity, q))}
+            />
+            {minQuantity > 1 && <span className="field__hint num">{minQuantity} already claimed</span>}
           </div>
           <MoneyField label="Price each" currency={currency} value={price} onChange={setPrice} invalid={price !== '' && parsed === null} />
         </div>
@@ -508,7 +667,7 @@ function ItemSheet({ open, item, currency, onClose, onSave, onDelete }) {
   );
 }
 
-function ExtrasSheet({ open, draft, onClose, onSave }) {
+export function ExtrasSheet({ open, draft, onClose, onSave }) {
   const [tax, setTax] = useState('');
   const [rate, setRate] = useState('');
   const [included, setIncluded] = useState(false);

@@ -135,7 +135,7 @@ All colors are OKLCH; the frontmatter is the source of truth and `frontend/src/s
 
 - **Night** surfaces (`night`, `night-raised`, `night-line`) and text (`night-ink`, `night-muted`) for the dark top and dark pills. Pure neutral, no tint.
 - **Day** surfaces (`day` pure white for sheets, `day-sunken` for page backgrounds, steppers and pressed rows, `day-line` for hairlines) with `ink` and `ink-muted` text (6.8:1 on white).
-- **Lime** is the accent. `lime` fills primary buttons with dark `lime-ink` text (pale fill, so dark text). `lime-soft` tints claimed rows and chips; `lime-deep` is the only lime allowed as text or icon on white (6.5:1). Never lime text on white, never lime on inactive things.
+- **Lime** is the accent. `lime` fills primary buttons with dark `lime-ink` text (pale fill, so dark text). `lime-soft` tints claimed rows and chips; `lime-deep` is the only lime allowed as text or icon on white (6.5:1). Never lime text on white, never lime on inactive things. A text field being typed in gets a lime ring on dark and white screens alike (team choice, 2026-11-03); buttons focused by keyboard keep the `lime-deep` ring on white. Exception (team choice, same day): the profile's "Edit" for payment methods is lime text on white, though it's low contrast (~1.3:1).
 - **Status**: `status-unpaid` (amber), `status-marked` (blue), `status-confirmed` (green), always paired with a word and an icon shape.
 - **Wallet** colors identify the payer's wallets on cards and in the pay sheet. Whish red matches Whish's own brand color; OMT yellow matches OMT's. Neo and Suyool are placeholders until their brand colors are checked (PRD Q19).
 
@@ -144,14 +144,15 @@ All colors are OKLCH; the frontmatter is the source of truth and `frontend/src/s
 One family: the platform system font (SF Pro on iPhone, Roboto on Android, Segoe UI on Windows). It ships optical sizing and is free to load. Fixed rem scale with roughly 1.2 between steps.
 
 - **Amount** (3.5rem, 700, −0.03em): your share. The cents render at 55% size in `night-muted`, like the inspo balance (`$ 17 .40`). Always `tabular-nums`.
-- **Title** (1.75rem), **heading** (1.25rem), **body** (1.0625rem, iOS body size), **label** (0.9375rem, 600, buttons and row titles), **caption** (0.8125rem, metadata and chips).
+- **Title** (1.75rem), **section title** (1.5rem: "Items", "Details" over their lists), **heading** (1.25rem), **body** (1.0625rem, iOS body size), **label** (0.9375rem, 600, buttons and row titles), **caption** (0.8125rem, metadata and chips).
 - Large text tracks tighter, small text slightly looser. `text-wrap: balance` on titles. No uppercase except chip labels of one or two words.
 
 ## Layout
 
 Mobile first, designed at 390 px wide. One column; on wider screens the app stays a 480 px column centered on `night`.
 
-- **Guest bill:** dark top (venue, who paid, your share, pill actions, the payer's wallet cards peeking in from the right edge), then the white sheet with the items, then a docked action bar (join, or Done with your total).
+- **Guest bill:** dark top (venue, who paid, your share or the bill total), then the white sheet: before joining, a compact name field and Join (44 px) above the items; then the items. Once joined, a docked action bar (Done or Pay with your total). No wallet cards on this screen (removed 2026-11-03); wallets appear in the pay sheet.
+- **Payer bill:** the same pattern. Dark top (back, Edit and Share pills, venue as a title, the card total as the big amount, "Bill + tips" under it), then the white sheet: People (one row per person: avatar, name, method, what they owe, status chip; tap for a sheet with Mark as paid), Your items (the guest's claim rows), the receipt photos, and the breakdown down to Card total. Docked: Card paid with the card total. **Dashboard (home):** "Still owed to you" in title size, then each bill as a row (venue, date and guests; total and what's owed in amber, or "All paid").
 - Spacing on a 4 px base (`xs` 4 to `3xl` 48). Screen gutter 20 px. List rows are 64 px minimum with hairline separators, not cards.
 - Safe areas respected with `env(safe-area-inset-*)`. Docked bars sit above the home indicator.
 
@@ -174,10 +175,10 @@ Pills for every button and stepper. 28 px top corners on sheets, 20 px on wallet
 - **Pill buttons:** `button-primary` (lime) for the one main action per screen; `button-night` on the dark top; `button-day` on white. 52 px primary height, 44 px secondary. Press feedback on pointer-down: scale 0.97 in 100 ms.
 - **Item row:** name and unit price on the left, claim state on the right. Unclaimed: a `Claim` pill. Claimed by you: a stepper (− count +) and the row tinted `lime-soft`. Under the name: "2 of 5 claimed" plus claimant avatars.
 - **Stepper:** pill with − and + buttons (44 px hit area each) and the count between. Minus at 1 unclaims.
-- **Wallet card stack:** the payer's wallets as small colored cards fanned at the right edge of the dark top, each showing the wallet's name. Tapping the stack opens the pay sheet.
-- **Bottom sheet:** native `<dialog>` for focus and Escape handling; the panel slides up with a critically damped spring (no bounce), can be dragged down to dismiss with velocity handoff, and cross-fades instead when reduced motion is on.
+- **Bottom sheet:** native `<dialog>` for focus and Escape handling; the panel slides up with a critically damped spring (no bounce) and the dim fades in on that same spring; closing, the dim and the panel's shadow fade out in 0.16 s, so the page is clear before the sheet reaches the bottom, can be dragged down to dismiss with velocity handoff, and cross-fades instead when reduced motion is on.
 - **Status chip:** tinted background, colored dot, one word (Unpaid, Paid?, Confirmed).
 - **Amount display:** big whole part, small cents, with a copy button where a guest needs to type it into a wallet app.
+- **Error messages:** small (caption) red text, regular weight, centered, no background box (`.form-error`). Set on Log in and applied everywhere (2026-11-03). A failed upload keeps its normal box with a red dashed edge and a red message.
 
 ## Do's and Don'ts
 

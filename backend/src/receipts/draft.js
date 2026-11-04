@@ -39,7 +39,12 @@ export function draftTotal({ items, tax, taxIncluded, service }) {
  * @param {string} today  YYYY-MM-DD, used when no date is printed
  */
 export function buildDraft(raw, today) {
-  const currency = raw.currency === 'LBP' ? 'LBP' : 'USD';
+  // LBP is never printed with cents: amounts like 7.50 mean dollars, whatever the
+  // AI said (read as pounds they would round to 8).
+  const printed = [raw.subtotal, raw.tax_amount, raw.service_amount, raw.total];
+  for (const line of raw.lines ?? []) printed.push(line.amount, line.unit_price);
+  const hasCents = printed.some((value) => value != null && !Number.isInteger(Number(value)));
+  const currency = raw.currency === 'LBP' && !hasCents ? 'LBP' : 'USD';
   const minor = (value) => toMinor(value, currency);
 
   const lines = (raw.lines ?? [])

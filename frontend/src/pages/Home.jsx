@@ -1,11 +1,23 @@
 import { useEffect, useId, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
+import Icon from '../components/Icon.jsx';
 import { api, cachedProfile } from '../lib/api.js';
 import { useAuth } from '../lib/auth.jsx';
-import { supabase } from '../lib/supabase.js';
+import { formatDate } from '../lib/dates.js';
+import { formatMoney } from '../lib/money.js';
 import './Home.css';
 
-/** Landing for visitors; the payer's start screen once logged in (dashboard comes in Phase 7). */
+/** What's still owed across bills, per currency: "$45.20", or "$45.20 · LBP 1,200,000". */
+function owedText(bills) {
+  const owed = {};
+  for (const b of bills) owed[b.currency] = (owed[b.currency] ?? 0) + b.outstanding;
+  const parts = Object.entries(owed)
+    .filter(([, minor]) => minor > 0)
+    .map(([currency, minor]) => formatMoney(minor, currency));
+  return parts.length ? parts.join(' · ') : 'Nothing';
+}
+
+/** Landing for visitors; the payer's dashboard once logged in (PRD M10). */
 export default function Home() {
   const { session } = useAuth();
   if (session === undefined) return <main className="state on-night" aria-busy="true" aria-label="Loading" />;
@@ -48,7 +60,6 @@ function PayerHome() {
   // Start from the remembered profile (instant when coming back), then refresh it.
   const [profile, setProfile] = useState(cachedProfile);
   const [failed, setFailed] = useState(false);
-  const [opening, setOpening] = useState(false);
 
   // Closing the camera without a photo opens the new-bill screen anyway, where
   // "Choose from photos" picks existing ones. (`cancel` doesn't bubble, so React's
@@ -62,6 +73,11 @@ function PayerHome() {
     return () => input.removeEventListener('cancel', onCancel);
   }, [navigate, profile]);
 
+  // Fetch the bill screen's code now, so opening a bill doesn't wait for it.
+  useEffect(() => {
+    import('./payer/BillScreen.jsx');
+  }, []);
+
   useEffect(() => {
     let active = true;
     api
@@ -73,24 +89,6 @@ function PayerHome() {
       active = false;
     };
   }, []);
-
-  async function openSample() {
-    const latest = profile.bills[0];
-    if (latest) return navigate(`/b/${latest.shareToken}`);
-    setOpening(true);
-    try {
-      const { shareToken } = await api.createSampleBill();
-      navigate(`/b/${shareToken}`);
-    } catch {
-      setOpening(false);
-      setFailed(true);
-    }
-  }
-
-  async function logOut() {
-    await supabase.auth.signOut();
-    navigate('/', { replace: true });
-  }
 
   if (failed) {
     return (
@@ -113,24 +111,43 @@ function PayerHome() {
         <p className="wordmark">
           spl<span>IT</span>
         </p>
-        <button type="button" className="pill pill--night pill--small" onClick={logOut}>
-          Log out
-        </button>
+        <Link className="pill pill--night pill--icon" to="/profile" aria-label="Profile">
+          <Icon name="person" />
+        </Link>
       </div>
       <div className="home__body">
-        <h1 className="home__title">Hi {profile.name}.</h1>
+        <h1 className="home__title">Hi {profile.name.trim().split(/\s+/)[0]}.</h1>
       </div>
       {profile.bills.length > 0 && (
-        <section className="home__bills" aria-labelledby="recent-bills">
-          <h2 id="recent-bills" className="home__bills-title">
-            Recent bills
+        <section className="home__bills" aria-labelledby="your-bills">
+          {/* Across every bill (PRD M10), per currency: USD and LBP don't add up */}
+          <div className="home__owed">
+            <p className="home__owed-label">Still owed to you</p>
+            <p className="home__owed-amount num">{owedText(profile.bills)}</p>
+          </div>
+          <h2 id="your-bills" className="home__bills-title">
+            Your bills
           </h2>
           <ul>
-            {profile.bills.slice(0, 3).map((bill) => (
+            {profile.bills.map((bill) => (
               <li key={bill.id}>
-                <Link className="home__bill" to={`/bills/${bill.id}/share`}>
-                  <span>{bill.venue}</span>
-                  <span className="home__bill-date">{bill.date}</span>
+                <Link className="home__bill" to={`/bills/${bill.id}`}>
+                  <span className="home__bill-main">
+                    <span className="home__bill-venue">{bill.venue}</span>
+                    <span className="home__bill-date">
+                      {formatDate(bill.date)} · {bill.guests === 1 ? '1 guest' : `${bill.guests} guests`}
+                    </span>
+                  </span>
+                  <span className="home__bill-side">
+                    <span className="home__bill-total num">{formatMoney(bill.total, bill.currency)}</span>
+                    <span className={`home__bill-owed num${bill.outstanding > 0 ? ' is-owed' : ''}`}>
+                      {bill.outstanding > 0
+                        ? `${formatMoney(bill.outstanding, bill.currency)} owed`
+                        : bill.guests > 0
+                          ? 'All paid'
+                          : 'Nobody yet'}
+                    </span>
+                  </span>
                 </Link>
               </li>
             ))}
@@ -159,11 +176,6 @@ function PayerHome() {
         <Link className="pill pill--night pill--block" to="/get-paid">
           {wallets.length ? 'Edit payment methods' : 'Set up payment methods'}
         </Link>
-        {profile.bills.length === 0 && (
-          <button type="button" className="pill pill--night pill--block" onClick={openSample} disabled={opening}>
-            {opening ? 'Creating a sample bill…' : 'Try a sample bill'}
-          </button>
-        )}
       </div>
     </main>
   );

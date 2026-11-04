@@ -150,6 +150,19 @@ describe('buildDraft calculations', () => {
     expect(draft.items).toEqual([{ name: 'Manakish', quantity: 2, price: 200000 }]);
   });
 
+  it('keeps the cents when the AI calls a dollar receipt LBP', () => {
+    const draft = buildDraft(
+      { ...base, currency: 'LBP', lines: [line(2, 'Pepsi Diet', 7.5), line(1, 'Perrier', 4)], total: 11.5 },
+      TODAY,
+    );
+    expect(draft.currency).toBe('USD');
+    expect(draft.items).toEqual([
+      { name: 'Pepsi Diet', quantity: 2, price: 375 },
+      { name: 'Perrier', quantity: 1, price: 400 },
+    ]);
+    expect(draft.printedTotal).toBe(1150);
+  });
+
   it('turns all-caps names into normal capitalization, keeps mixed case', () => {
     const draft = buildDraft(
       { ...base, venue: 'DINEFINE RESTAURANT', lines: [line(1, 'CAESAR SALAD', 9), line(1, 'Swiss Bliss Burger', 15), line(1, '7UP', 3)] },

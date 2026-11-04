@@ -221,9 +221,13 @@
   cursor: progress;
 }
 
+/* Failed upload: same box, red dashed edge and a red message, no red background */
 .upload.is-error {
   border-color: var(--danger);
-  background: var(--danger-soft);
+}
+
+.upload.is-error .upload__meta {
+  color: var(--danger);
 }
 
 .upload__icon {
@@ -249,14 +253,6 @@
 .upload__meta {
   font-size: var(--text-caption);
   color: var(--ink-muted);
-}
-
-.upload__error {
-  margin-top: var(--space-md);
-  font-size: var(--text-label);
-  font-weight: 600;
-  color: var(--danger);
-  text-wrap: pretty;
 }
 
 .qr-result {

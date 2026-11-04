@@ -38,7 +38,7 @@ Ate at the table. Wants to find what they had, see exactly what they owe, and pa
 - **G4** Before paying the restaurant, the payer knows the exact card amount: the bill total plus everyone's tips.
 
 **Capstone success criteria**
-- The full flow runs live on real phones: payer creates a bill, three guests join by QR, claim items (including a shared one), pay, and the payer confirms.
+- The full flow runs live on real phones: payer creates a bill, three guests join by QR, claim items (one person per unit, including units of the same dish), pay, and the payer confirms.
 - All eleven must-haves work end to end.
 - The split engine has unit tests covering the rounding edge cases in §8.
 - Deployed: front end on Vercel, API on Render.
@@ -54,7 +54,7 @@ Ate at the table. Wants to find what they had, see exactly what they owe, and pa
 | M3 | Receipt photos | Stored with the bill; one receipt can take several photos |
 | M4 | Share | A QR code on the payer's screen, or a link |
 | M5 | Guest join | Open the link, type a name, done. The browser remembers them |
-| M6 | Claim items | Tap an item to claim one, then + / − to change the count; a shared item is split between everyone who claims it |
+| M6 | Claim items | Tap an item to claim one, then + / − to change the count; each unit belongs to one person |
 | M7 | Extras | Tax and service spread proportionally to each person's items, rounded to the cent |
 | M8 | Pay | Guest sees their total (share plus tip) and picks Cash or one of the payer's wallets; a wallet opens the payer's own link from their QR code, and the guest types the amount shown |
 | M9 | Payment status | Unpaid → Marked as paid → Confirmed, visible to the payer by name |
@@ -98,7 +98,7 @@ M11 was added after the proposal (team decision, 2 November 2026) and replaces t
 5. Opens Pay and picks a method:
    - **A wallet the payer set up (Whish, OMT, Neo, Suyool):** the amount is shown large with a copy button. Open Whish opens the payer's own Whish link, so the app opens on paying the payer. They type the amount and send.
    - **Cash:** they hand it to the payer.
-6. Taps Mark as paid.
+6. The payer marks them as paid once the money arrives (guests don't mark themselves; changed 3 November 2026).
 
 ### 6.3 Payer tracks and confirms
 1. The bill shows the card total: the bill total plus all tips. If the bill is $370 and tips add up to $30, the payer charges $400 to their card.
@@ -126,9 +126,9 @@ Team decision, 3 November 2026: bills are never typed in from scratch.
 1. **Photos:** tapping New bill opens the camera straight away; the payer takes one or more photos of the receipt (up to 6, in order, one per part of a long receipt).
 2. **Read:** the AI (OpenAI vision model, called from Express so the key stays secret) reads the photos and returns only what is printed: venue, date, currency, each line as printed (quantity, name, printed amount, and a unit price if one is printed separately), printed subtotal, tax amount and rate, service, total, and the LBP rate if printed. **The AI never calculates.**
 3. **The app calculates:** unit price = printed line amount ÷ quantity (or the printed unit price); if the printed amounts only add up when read as unit prices, the app reads them that way. A line that doesn't divide evenly (e.g. $10.00 for 3) is split into lines that add up to the exact cent. Tax with "included" on the receipt is shown, not added (Q15). Tip guides, card slips and table numbers are ignored.
-4. **Review:** every field is editable: venue, date, currency, each item (name, quantity, unit price), tax, rate, service. Lines can be removed, and a missed line can be added. A check compares the app's total with the printed total: a match shows in green, a mismatch in amber with both amounts. The payer can still create the bill.
+4. **Review:** every field is editable: venue, date, currency, exchange rate, each item (name, quantity, unit price), tax, rate, service. Lines can be removed, and a missed line can be added. Changing the currency converts every amount at the exchange rate (the rate printed on the receipt, or 89,500 LBP per $1 if none is printed); switching back restores the amounts exactly. The review screen shows the subtotal, tax and service, and the bill total. It no longer compares against the printed total (team decision, 3 November 2026).
 5. **Create:** the bill, its items, its photos and the payer's member row are saved, and the share screen opens (M4).
-- If the AI can't read the photos (blurry, not a receipt, service down), the payer is told why and can retake them. There is no blank-form fallback.
+- If the AI can't read the photos (blurry, not a receipt, more than one receipt, service down), the payer is told why and can retake them. A photo too blurry, dark or cut off to read is named by number ("Photo 2 isn't clear. Retake it and try again.") and outlined in red, so only that one needs retaking. There is no blank-form fallback.
 - Tips are not a bill field. Each person adds their own (M11).
 - Editing a bill after guests have joined: see Q7.
 
@@ -159,15 +159,15 @@ Team decision, 3 November 2026: bills are never typed in from scratch.
 ### M6 Claim items
 - Tapping an item claims one unit of it. A + / − counter then sets how many units that person had; going to zero unclaims it.
 - Each item shows how many of its units are claimed ("3 of 5") and by whom.
-- While claimed units don't exceed the quantity, each unit costs the unit price and the leftover units are unclaimed.
-- When claimed units exceed the quantity, people are sharing: the line total is split in proportion to the units each person claimed. One pizza claimed once each by three people costs a third each. Rules in §8; see Q14.
+- **One person per unit** (team decision, 3 November 2026; replaces sharing): claims on an item never add up to more than its quantity. A person can claim at most the units nobody else has; a fully claimed item shows who has it and no Claim button. The server enforces it under a lock, so two phones can't both take the last one.
+- Each unit costs the unit price; leftover units are unclaimed.
 - The payer claims their own items the same way, through their own member row.
 - A guest can only change their own claims (checked against their guest token).
 - Claims lock while the member is Marked as paid or Confirmed (proposed; see Q9).
 
 **Accept when:**
 - 5 pizzas at $10.00: Ralph claims 1 and Charbel claims 2, so they owe $10.00 and $20.00 before extras, and the other 2 pizzas ($20.00) show as unclaimed.
-- 1 item at $30.00 claimed once each by three people costs each $10.00; when one unclaims, the other two pay $15.00 each.
+- 1 item at $30.00 claimed by Ralph can't be claimed by anyone else until Ralph unclaims it.
 
 ### M7 Extras
 - Tax and service are spread in proportion to each member's item subtotal, using the rules in §8. Tips are not extras: each person sets their own (M11).
@@ -210,7 +210,7 @@ Added after the proposal (team decision, 2 November 2026). Replaces the proposal
 
 ## 8. Split calculation rules
 
-All split and rounding logic runs on the server. Code works in integer minor units, never floating point (proposed): cents for USD, whole pounds for LBP (see Q6).
+All split and rounding logic runs on the server. For instant feedback, the guest page previews a claim with an identical copy of the engine; the server's answer always replaces it (team decision, 3 November 2026). Code works in integer minor units, never floating point (proposed): cents for USD, whole pounds for LBP (see Q6).
 
 **Definitions**
 - Line total of item *i*: `L_i = price_i × quantity_i` (price is the unit price)
@@ -221,7 +221,7 @@ All split and rounding logic runs on the server. Code works in integer minor uni
 - Card total: `C = T + Σ tips`
 
 **Steps**
-1. **Item shares.** Divide each line by `D_i = max(c_i, quantity_i)`. Member *m* gets `L_i × u_im / D_i`, and the **unclaimed** bucket gets `L_i × (D_i − c_i) / D_i`. So a line with fewer claims than units costs the unit price per unit, with the rest unclaimed; a line with more claims than units (sharing) is split by units claimed.
+1. **Item shares.** Claims never exceed the quantity (M6, one person per unit), so `c_i ≤ quantity_i` and each claimed unit costs the unit price. The engine still divides each line by `D_i = max(c_i, quantity_i)`, which also covered sharing before it was removed. Member *m* gets `L_i × u_im / D_i`, and the **unclaimed** bucket gets `L_i × (D_i − c_i) / D_i`. So a line with fewer claims than units costs the unit price per unit, with the rest unclaimed; a line with more claims than units (sharing) is split by units claimed.
 2. **Member subtotal.** `s_m` = the sum of member *m*'s item shares. The unclaimed bucket's subtotal is `U`.
 3. **Extras.** Each member gets `E × s_m / S`, and the unclaimed bucket gets `E × U / S`. If `S = 0`, all extras go to the unclaimed bucket.
 4. **Member total.** `t_m = s_m + e_m`. The member pays `t_m + tip_m`.
@@ -256,6 +256,8 @@ stateDiagram-v2
     Unpaid --> Confirmed: payer confirms cash in hand
     Confirmed --> MarkedPaid: payer undoes confirm
 ```
+
+**Changed 3 November 2026 (team decision):** only the payer marks people as paid, from the dashboard. Guests no longer mark themselves paid or undo it; the server refuses a status change from a guest (403 `payer_only`). The table below is kept for the payer's side (P6.6); the guest rows no longer apply.
 
 | From | To | Who | Notes |
 | --- | --- | --- | --- |
@@ -311,14 +313,14 @@ The five tables in the proposal stay, with the changes below: `users` (payers on
 
 **Reliability.** Guest actions are idempotent. A network error shows a retry and never loses what the user entered.
 
-**Formatting.** English UI. USD shows two decimals; LBP shows whole pounds with thousands separators.
+**Formatting.** English UI. USD shows two decimals; LBP shows whole pounds with thousands separators. Tax and service lines appear only when the receipt has them (not as $0.00), and tax shows its rate when one was printed: "tax (11%) and service".
 
 ## 12. Risks
 
 | ID | Risk | Impact | Mitigation |
 | --- | --- | --- | --- |
 | R1 | **Confirmed:** no wallet can be opened with the amount filled in. Phone tests (2 Nov 2026): `whish.money/app/pay/<code>` opens the Whish app, but `<code>` is a Whish Pay invoice that holds the amount and recipient, and only registered merchants can create one through Whish's business API; a made-up code points to no invoice. The OMT links didn't open OMT | Guests type the amount themselves | The payer uploads each wallet's receive-money QR code; its link opens the app on paying the payer, and the amount is shown large with a copy button (M1, M8) |
-| R2 | Clipboard writes need HTTPS and a user gesture, and iOS is strict | Copy fails silently | Call the copy directly inside the tap handler; show a visible "Copied" state; selectable text as a fallback |
+| R2 | Clipboard writes need HTTPS and a user gesture, and iOS is strict | Copy fails silently | Call the copy directly inside the tap handler; show a visible "Copied" state; fall back to the older select-and-copy where the Clipboard API is missing (plain http) |
 | R3 | A guest clears their browser or switches browsers | They lose their identity and rejoin as a duplicate | "Not you?" flow; the payer can remove stale members |
 | R4 | Render's free tier spins the API down when idle | The first request can take tens of seconds, e.g. at the start of the demo | Wake the API before demoing; show a clear loading state |
 | R5 | Concurrent claims from several phones | Stale totals on screen | The server is the source of truth; polling for MVP, Socket.io with N1 |
@@ -341,10 +343,10 @@ The five tables in the proposal stay, with the changes below: `users` (payers on
 | Q11 | Does a bill have a closed or settled state? | Derived, not stored: settled when every member is Confirmed and nothing is unclaimed |
 | Q12 | English only, or Arabic too? | English only for the MVP |
 | Q13 | What are the capstone deadline and milestone dates? | Unknown. Record them in PLAN.md |
-| Q14 | When more units are claimed than exist (three people each claim the one pizza), is splitting in proportion to units claimed right? | Yes, as written in §8. When everyone claims one, it's an even split |
+| Q14 | When more units are claimed than exist (three people each claim the one pizza), is splitting in proportion to units claimed right? | **Resolved (3 November 2026):** no sharing. Each unit goes to one person; nobody can claim past the quantity |
 | Q15 | If the receipt says tax is already included in the prices, does splIT add it? | **Resolved:** no. A "Tax included in prices" switch shows the tax for reference without adding it again |
 | Q16 | Tips go on the payer's card, so a tip added after the card is charged never reaches the restaurant. Example: the card is charged $400 at the table; two days later Jason opens the link, claims his items and adds a $5 tip. Should the app still ask him to tip? | No. The payer taps **Card paid** after charging the card. That locks tips: the card total stays at what was charged, and later guests aren't asked to tip |
 | Q17 | Opening `whish.money/app/pay/<made-up code>` launches Whish. Does it land cleanly? | **Superseded** by Q18: guests open the payer's own link instead |
 | Q18 | Can the payer upload their wallet's receive-money QR code so splIT reads the link inside? | **Resolved:** yes, this is the get-paid setup in M1. Still to check with a real Whish Me QR that it holds a `whish.money` link |
-| Q20 | What if the app's total doesn't match the printed total after reading? | **Resolved:** the AI only reads; the app calculates and shows the difference in amber; the payer fixes or accepts it and can still create the bill |
+| Q20 | What if the app's total doesn't match the printed total after reading? | **Resolved:** the AI only reads and the app calculates. The amber mismatch warning was removed at the team's request (3 November 2026): the payer checks the items against the photo |
 | Q19 | What are the steps to save the receive-money QR in OMT, Neo and Suyool, and which domains do their links use? | Team will send the steps. Until then, generic steps, and Neo/Suyool links are accepted from any https address and shown to the payer to confirm |

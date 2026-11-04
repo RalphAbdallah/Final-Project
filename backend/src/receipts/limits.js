@@ -6,6 +6,8 @@
  * Measured 2026-11-03: one receipt photo costs about 1,500 to 4,000 tokens.
  */
 export function aiLimitsFromEnv(env = process.env) {
+  // AI_LIMITS=off turns every limit off (meant for local development only).
+  if (String(env.AI_LIMITS).toLowerCase() === 'off') return null;
   const num = (key, fallback) => (Number(env[key]) > 0 ? Number(env[key]) : fallback);
   return {
     readsPerHour: num('AI_READS_PER_HOUR', 10),
@@ -27,6 +29,7 @@ const secondsUntil = (oldest, windowMs, now) => Math.max(60, Math.ceil((new Date
  * (seconds) when a limit is reached.
  */
 export async function checkAiLimits(repo, userId, limits, now = Date.now()) {
+  if (!limits) return null; // limits turned off
   const [hour, day, everyone] = await Promise.all([
     repo.aiUsageSince({ userId, since: new Date(now - HOUR) }),
     repo.aiUsageSince({ userId, since: new Date(now - DAY) }),

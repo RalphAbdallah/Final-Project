@@ -24,8 +24,10 @@ html:has(.screen) {
   background: var(--day);
 }
 
+/* While a sheet is open the page neither scrolls nor bounces (iPhone pulled the sheet along) */
 html:has(dialog[open]) {
   overflow: hidden;
+  overscroll-behavior: none;
 }
 
 body {
@@ -87,8 +89,7 @@ a,
 [role='button'],
 [role='radio'],
 .item,
-.wallet-logo,
-.wallet-stack {
+.wallet-logo {
   -webkit-user-select: none;
   user-select: none;
   -webkit-touch-callout: none;
@@ -218,6 +219,13 @@ label.pill {
   background: var(--day-pressed);
 }
 
+/* Only for the confirm step of something that can't be undone (deleting a bill) */
+.pill--danger {
+  min-height: 52px;
+  background: var(--danger);
+  color: oklch(1 0 0);
+}
+
 .pill--small {
   min-height: 36px;
   padding: 0 var(--space-lg);
@@ -276,6 +284,12 @@ label.pill {
   white-space: nowrap;
 }
 
+/* Payment status: fully rounded, the word only */
+.chip--status {
+  padding: 0 0.75rem;
+  border-radius: var(--radius-pill);
+}
+
 .chip__dot {
   width: 0.4375rem;
   height: 0.4375rem;
@@ -330,6 +344,22 @@ label.pill {
   opacity: 1;
 }
 
+/* iPhone Safari draws date fields natively: smaller centered text, and narrower than
+   width: 100%. Turning that off makes them look like every other field. */
+.field-input[type='date'] {
+  -webkit-appearance: none;
+  appearance: none;
+  display: block;
+  min-width: 0;
+  line-height: 52px;
+  text-align: left;
+}
+
+.field-input[type='date']::-webkit-date-and-time-value {
+  min-height: 52px;
+  text-align: left;
+}
+
 .field-input[aria-invalid='true'] {
   box-shadow: inset 0 0 0 2px var(--danger);
 }
@@ -352,20 +382,19 @@ label.pill {
   color: var(--ink-muted);
 }
 
+/* Error messages everywhere: small red text, centered, no box, no bold (team style, set on Log in) */
 .form-error {
-  padding: var(--space-md) var(--space-lg);
-  border-radius: 14px;
-  background: var(--danger-soft);
   color: var(--danger);
-  font-size: var(--text-label);
-  font-weight: 600;
-  text-wrap: pretty;
+  font-size: var(--text-caption);
+  font-weight: 400;
+  text-align: center;
+  text-wrap: balance;
 }
 
 .field-error {
   margin-top: var(--space-sm);
   font-size: var(--text-caption);
-  font-weight: 600;
+  font-weight: 400;
   color: var(--danger);
 }
 
@@ -382,8 +411,10 @@ label.pill {
   font-weight: 650;
 }
 
+/* The field being typed in gets a lime ring, on dark and white screens alike (team choice) */
+.field-input:focus-visible,
 .money-input:focus-within {
-  outline: 2px solid var(--lime-deep);
+  outline: 2px solid var(--lime);
   outline-offset: 2px;
 }
 
@@ -393,6 +424,9 @@ label.pill {
 
 .money-input input {
   flex: 1;
+  /* A percentage width lets the box shrink to its column; with an automatic width the
+     input's own ~20-character width pushed it past narrow columns (Price each, Tax). */
+  width: 100%;
   min-width: 0;
   padding: 0;
   border: 0;

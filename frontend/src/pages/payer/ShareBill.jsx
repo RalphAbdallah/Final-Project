@@ -3,13 +3,15 @@ import { useEffect, useRef, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import Amount from '../../components/Amount.jsx';
 import Icon from '../../components/Icon.jsx';
-import { api } from '../../lib/api.js';
+import { api, cachedBill, cachedProfile } from '../../lib/api.js';
+import { copyText } from '../../lib/clipboard.js';
 import './share.css';
 
 /** Share screen (PRD M4): a big QR code on the payer's phone, plus Copy link and the share sheet. */
 export default function ShareBill() {
   const { id } = useParams();
-  const [bill, setBill] = useState(null);
+  // The bill (or the dashboard) already has the name, total and link: the QR code shows at once, then refreshes.
+  const [bill, setBill] = useState(() => cachedBill(id)?.bill ?? cachedProfile()?.bills?.find((b) => b.id === id) ?? null);
   const [failed, setFailed] = useState(false);
   const [qr, setQr] = useState('');
   const [copied, setCopied] = useState(false);
@@ -19,7 +21,7 @@ export default function ShareBill() {
     let active = true;
     api
       .payerBill(id)
-      .then((b) => active && setBill(b))
+      .then((view) => active && setBill(view.bill))
       .catch(() => active && setFailed(true));
     return () => {
       active = false;
@@ -37,14 +39,10 @@ export default function ShareBill() {
   }, [link]);
 
   async function copyLink() {
-    try {
-      await navigator.clipboard.writeText(link);
-      setCopied(true);
-      clearTimeout(timer.current);
-      timer.current = setTimeout(() => setCopied(false), 2400);
-    } catch {
-      setCopied(false);
-    }
+    const ok = await copyText(link);
+    setCopied(ok);
+    clearTimeout(timer.current);
+    if (ok) timer.current = setTimeout(() => setCopied(false), 2400);
   }
 
   async function share() {
@@ -66,14 +64,38 @@ export default function ShareBill() {
       </main>
     );
   }
-  if (!bill) return <main className="state on-night" aria-busy="true" aria-label="Loading" />;
+  // Straight after creating a bill nothing is cached yet: the screen's own layout while it loads.
+  if (!bill) {
+    return (
+      <main className="share-screen on-night" aria-busy="true" aria-label="Loading">
+        <div className="top__bar">
+          <Link to={`/bills/${id}`} className="pill pill--night pill--icon" aria-label="Back to the bill">
+            <Icon name="chevronLeft" />
+          </Link>
+          <p className="wordmark">
+            spl<span>IT</span>
+          </p>
+          <span className="share-screen__spacer" />
+        </div>
+        <div className="share-screen__head">
+          <div className="skeleton" style={{ width: '55%', height: 24, marginInline: 'auto' }} />
+          <div className="skeleton" style={{ width: '40%', height: 44, margin: '12px auto 0' }} />
+        </div>
+        <figure className="qr-card">
+          <div className="qr-card__code" />
+        </figure>
+      </main>
+    );
+  }
 
   const local = ['localhost', '127.0.0.1'].includes(window.location.hostname);
+  // Browsers without a share sheet (and plain http, like a laptop's network address) show Copy link only.
+  const canShare = typeof navigator.share === 'function';
 
   return (
     <main className="share-screen on-night">
       <div className="top__bar">
-        <Link to="/" className="pill pill--night pill--icon" aria-label="Home">
+        <Link to={`/bills/${id}`} className="pill pill--night pill--icon" aria-label="Back to the bill">
           <Icon name="chevronLeft" />
         </Link>
         <p className="wordmark">
@@ -104,14 +126,11 @@ export default function ShareBill() {
           <Icon name={copied ? 'check' : 'copy'} size={18} />
           {copied ? 'Link copied' : 'Copy link'}
         </button>
-        {typeof navigator.share === 'function' && (
+        {canShare && (
           <button type="button" className="pill pill--night pill--block" onClick={share}>
             <Icon name="arrowUpRight" size={18} /> Share
           </button>
         )}
-        <Link className="pill pill--night pill--block" to={`/b/${bill.shareToken}`}>
-          Preview what guests see
-        </Link>
       </div>
     </main>
   );

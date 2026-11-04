@@ -31,6 +31,12 @@ const PATHS = {
       <path d="M12 7.8v4.7M12 16.2h.01" />
     </>
   ),
+  person: (
+    <>
+      <circle cx="12" cy="8.5" r="3.6" />
+      <path d="M5 19.5c1.1-3.4 3.8-5.2 7-5.2s5.9 1.8 7 5.2" />
+    </>
+  ),
 };
 
 export default function Icon({ name, size = 20, ...rest }) {

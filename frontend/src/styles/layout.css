@@ -51,7 +51,7 @@
 }
 
 .surface__title {
-  font-size: var(--text-heading);
+  font-size: 1.5rem; /* between heading and title: section names lead their list */
   font-weight: 650;
   letter-spacing: -0.01em;
 }
@@ -74,6 +74,16 @@
   padding: var(--space-md) var(--gutter) calc(var(--space-md) + env(safe-area-inset-bottom));
   background: var(--day);
   color: var(--ink);
+}
+
+/*
+ * An empty dock: a short solid white bar for screens with nothing to dock yet. The
+ * toolbar-tint strip below then sits on it, so content scrolls under a clean bottom
+ * edge instead of being crossed by a thin white line (seen on iPhone with a 2px bar).
+ */
+.dock--empty {
+  height: calc(var(--space-lg) + env(safe-area-inset-bottom));
+  padding: 0;
 }
 
 /*
@@ -103,25 +113,6 @@
   height: 2px;
   background: var(--day);
   pointer-events: none;
-}
-
-.dock__row {
-  display: flex;
-  align-items: center;
-  gap: var(--space-sm);
-}
-
-.dock__hint {
-  margin-top: var(--space-sm);
-  font-size: var(--text-caption);
-  color: var(--ink-muted);
-  text-align: center;
-  text-wrap: pretty;
-}
-
-.dock__hint.is-error {
-  color: var(--danger);
-  font-weight: 600;
 }
 
 /* Toasts sit just above the dock */

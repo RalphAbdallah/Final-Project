@@ -111,22 +111,75 @@
   list-style: none;
 }
 
+/* Still owed across every bill: the one number to act on */
+.home__owed {
+  margin-bottom: var(--space-xl);
+}
+
+.home__owed-label {
+  font-size: var(--text-label);
+  color: var(--night-muted);
+}
+
+.home__owed-amount {
+  margin-top: var(--space-xs);
+  font-size: var(--text-title);
+  font-weight: 750;
+  line-height: 1.12;
+  letter-spacing: -0.02em;
+}
+
+/* One bill per row, hairlines between, like the lists on the white screens */
 .home__bill {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: var(--space-md);
-  min-height: 3.25rem;
+  min-height: 4.5rem;
+  padding: var(--space-md) 0;
   border-bottom: 1px solid var(--night-line);
   color: var(--night-ink);
-  font-weight: 600;
   text-decoration: none;
 }
 
-.home__bill-date {
+.home__bill:active {
+  opacity: 0.7;
+}
+
+.home__bill-main,
+.home__bill-side {
+  display: grid;
+  gap: 2px;
+}
+
+.home__bill-main {
+  min-width: 0;
+}
+
+.home__bill-side {
+  flex: none;
+  justify-items: end;
+}
+
+.home__bill-venue {
+  overflow-wrap: anywhere;
+  font-size: var(--text-label);
+  font-weight: 600;
+}
+
+.home__bill-total {
+  font-size: var(--text-label);
+  font-weight: 700;
+}
+
+.home__bill-date,
+.home__bill-owed {
   font-size: var(--text-caption);
-  font-weight: 500;
   color: var(--night-muted);
+}
+
+.home__bill-owed.is-owed {
+  color: var(--status-unpaid);
 }
 
 .home__actions {

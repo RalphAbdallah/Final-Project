@@ -16,6 +16,9 @@ const AuthPage = lazy(() => import('./pages/auth/AuthPage.jsx'));
 const GetPaid = lazy(() => import('./pages/payer/GetPaid.jsx'));
 const NewBill = lazy(() => import('./pages/payer/NewBill.jsx'));
 const ShareBill = lazy(() => import('./pages/payer/ShareBill.jsx'));
+const BillScreen = lazy(() => import('./pages/payer/BillScreen.jsx'));
+const EditBill = lazy(() => import('./pages/payer/EditBill.jsx'));
+const Profile = lazy(() => import('./pages/payer/Profile.jsx'));
 const GuestBill = lazy(() => import('./pages/guest/GuestBill.jsx'));
 const NotFound = lazy(() => import('./pages/NotFound.jsx'));
 
@@ -43,6 +46,30 @@ createRoot(document.getElementById('root')).render(
                 element={
                   <RequireAuth>
                     <NewBill />
+                  </RequireAuth>
+                }
+              />
+              <Route
+                path="/profile"
+                element={
+                  <RequireAuth>
+                    <Profile />
+                  </RequireAuth>
+                }
+              />
+              <Route
+                path="/bills/:id"
+                element={
+                  <RequireAuth>
+                    <BillScreen />
+                  </RequireAuth>
+                }
+              />
+              <Route
+                path="/bills/:id/edit"
+                element={
+                  <RequireAuth>
+                    <EditBill />
                   </RequireAuth>
                 }
               />

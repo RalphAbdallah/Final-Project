@@ -49,6 +49,25 @@ export function createMemoryRepo() {
       return copy(user);
     },
 
+    async updateUser(id, { name, email }) {
+      const user = db.users.find((u) => u.id === id);
+      if (email !== undefined) user.email = email;
+      if (name === undefined) return;
+      user.name = name;
+      for (const bill of db.bills.filter((b) => b.payerId === id)) {
+        const others = db.members.filter((m) => m.billId === bill.id && !m.isPayer);
+        if (others.some((m) => m.name.toLowerCase() === name.toLowerCase())) continue;
+        const row = db.members.find((m) => m.billId === bill.id && m.isPayer);
+        if (row) row.name = name;
+      }
+    },
+
+    async deleteUser(id) {
+      for (const bill of db.bills.filter((b) => b.payerId === id)) await this.deleteBill(bill.id);
+      db.users = db.users.filter((u) => u.id !== id);
+      db.payouts = db.payouts.filter((p) => p.userId !== id);
+    },
+
     async listPayouts(userId) {
       return db.payouts.filter((p) => p.userId === userId).map(({ wallet, payUrl }) => ({ wallet, payUrl }));
     },
@@ -63,11 +82,48 @@ export function createMemoryRepo() {
       db.payouts = db.payouts.filter((p) => !(p.userId === userId && p.wallet === wallet));
     },
 
-    async listBills(userId) {
-      return db.bills
-        .filter((b) => b.payerId === userId)
-        .reverse()
-        .map(({ id, venue, date, shareToken }) => ({ id, venue, date, shareToken }));
+    async listBillStates(userId) {
+      const bills = db.bills.filter((b) => b.payerId === userId).reverse();
+      return Promise.all(
+        bills.map(async (bill) => {
+          const { items, members, claims } = await this.getBillState(bill);
+          return { bill: copy(bill), state: { items, members, claims } };
+        }),
+      );
+    },
+
+    async listPhotos(billId) {
+      return copy(db.bills.find((b) => b.id === billId)?.photoPaths ?? []);
+    },
+
+    async updateBill(billId, fields, items) {
+      Object.assign(db.bills.find((b) => b.id === billId), fields);
+      const kept = new Set(items.filter((i) => i.id).map((i) => i.id));
+      const removed = new Set(db.items.filter((i) => i.billId === billId && !kept.has(i.id)).map((i) => i.id));
+      db.items = db.items.filter((i) => !removed.has(i.id));
+      db.claims = db.claims.filter((c) => !removed.has(c.itemId));
+      items.forEach((item, position) => {
+        const existing = item.id && db.items.find((i) => i.id === item.id && i.billId === billId);
+        if (existing) Object.assign(existing, { name: item.name, price: item.price, quantity: item.quantity, position });
+        else db.items.push({ id: newId(), billId, position, name: item.name, price: item.price, quantity: item.quantity });
+      });
+    },
+
+    async deleteBill(billId) {
+      const itemIds = new Set(db.items.filter((i) => i.billId === billId).map((i) => i.id));
+      db.bills = db.bills.filter((b) => b.id !== billId);
+      db.items = db.items.filter((i) => i.billId !== billId);
+      db.members = db.members.filter((m) => m.billId !== billId);
+      db.claims = db.claims.filter((c) => !itemIds.has(c.itemId));
+    },
+
+    async setCardPaid(billId, at) {
+      db.bills.find((b) => b.id === billId).cardPaidAt = at;
+    },
+
+    async deleteMember(memberId) {
+      db.members = db.members.filter((m) => !(m.id === memberId && !m.isPayer));
+      db.claims = db.claims.filter((c) => c.memberId !== memberId);
     },
 
     async createSampleBill(user) {
@@ -141,22 +197,23 @@ export function createMemoryRepo() {
       });
     },
 
-    async findGuest(billId, guestToken) {
-      return copy(db.members.find((m) => m.billId === billId && m.guestToken === guestToken));
+    async findGuestByShareToken(shareToken, guestToken) {
+      const bill = db.bills.find((b) => b.shareToken === shareToken);
+      return copy(bill && db.members.find((m) => m.billId === bill.id && m.guestToken === guestToken));
     },
 
     async addGuest(billId, name, guestToken) {
       return copy(insertMember(billId, { name, guestToken }));
     },
 
-    async getItem(billId, itemId) {
-      return copy(db.items.find((i) => i.id === itemId && i.billId === billId));
-    },
-
     async setClaim(itemId, memberId, units) {
+      const item = db.items.find((i) => i.id === itemId);
+      const others = db.claims.filter((c) => c.itemId === itemId && c.memberId !== memberId);
+      if (!item || units > item.quantity - others.reduce((acc, c) => acc + c.units, 0)) return false;
       const existing = db.claims.find((c) => c.itemId === itemId && c.memberId === memberId);
       if (existing) existing.units = units;
       else db.claims.push({ itemId, memberId, units });
+      return true;
     },
 
     async removeClaim(itemId, memberId) {

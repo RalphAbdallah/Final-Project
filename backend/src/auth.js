@@ -35,6 +35,8 @@ export function requirePayer({ verifyToken, repo }) {
     const identity = await verifyToken(token);
     if (!identity) return res.status(401).json({ error: 'invalid_token' });
 
+    // Routes that change the payer's row drop the remembered copy.
+    req.forgetUser = () => users.delete(identity.id);
     const cached = users.get(identity.id);
     if (cached && cached.expires > Date.now()) {
       req.user = cached.user;
@@ -47,6 +49,11 @@ export function requirePayer({ verifyToken, repo }) {
         email: identity.email,
         name: (identity.name || identity.email?.split('@')[0] || 'Payer').trim().slice(0, 60),
       }));
+    // A changed email is confirmed in Supabase Auth; keep our copy in step.
+    if (identity.email && req.user.email !== identity.email) {
+      await repo.updateUser(identity.id, { email: identity.email });
+      req.user = { ...req.user, email: identity.email };
+    }
     users.set(identity.id, { user: req.user, expires: Date.now() + USER_TTL_MS });
     next();
   };

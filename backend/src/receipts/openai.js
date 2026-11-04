@@ -33,6 +33,8 @@ export const RECEIPT_SCHEMA = {
   additionalProperties: false,
   required: [
     'is_receipt',
+    'receipt_count',
+    'unclear_photos',
     'venue',
     'date',
     'currency',
@@ -47,7 +49,22 @@ export const RECEIPT_SCHEMA = {
     'lbp_rate',
   ],
   properties: {
-    is_receipt: { type: 'boolean', description: 'False if the photos do not show a restaurant or shop receipt.' },
+    is_receipt: {
+      type: 'boolean',
+      description:
+        'False only if the photos show something other than a restaurant or shop receipt. A receipt too blurry to read is still a receipt (list it in unclear_photos).',
+    },
+    receipt_count: {
+      type: 'integer',
+      description:
+        'How many different receipts the photos show (different venue, date, receipt number or grand total). Parts of one long receipt count as 1.',
+    },
+    unclear_photos: {
+      type: 'array',
+      items: { type: 'integer' },
+      description:
+        'Numbers of the photos (1 = first) too blurry, dark, glared, cut off or far away to read their item lines and amounts with confidence. Empty when every photo is readable.',
+    },
     venue: { ...nullableString, description: 'Business name as printed (the brand, not the legal company).' },
     date: { ...nullableString, description: 'Receipt date as YYYY-MM-DD, or null if not printed.' },
     currency: {
@@ -88,7 +105,9 @@ const INSTRUCTIONS = `You read restaurant and shop receipts from photos and copy
 
 Rules:
 - Copy numbers exactly as printed. Never calculate, divide, add, round or fix anything, even if the receipt looks wrong.
-- The photos are parts of ONE receipt, in order. They may overlap: list each item line only once.
+- The photos should be parts of ONE receipt, in order. They may overlap: list each item line only once.
+- If the photos actually show more than one different receipt, set receipt_count to how many; never silently drop one.
+- If a photo is too blurry, dark, glared, cut off or far away to read its item lines or amounts with confidence, put its number in unclear_photos instead of guessing. A slightly soft photo you can still read is fine. A receipt you can recognize but not read is still a receipt: keep is_receipt true and list the photo in unclear_photos.
 - Item lines are things that were bought. Do not list subtotal, tax, service, total, tip guides, tip or signature lines, card payment details, table, guest or server numbers.
 - quantity: the printed count ("2 x", "2X", or a Qty column). Use 1 when no count is printed.
 - amount: the money amount printed on that item line. unit_price: only when a separate per-unit price is printed on the same line, such as "@ $2.99".
@@ -167,6 +186,11 @@ export function openAiReceiptReader({
       throw new ReceiptReadError('ai_unavailable', `Unparseable response (${body.choices?.[0]?.finish_reason})`, usage);
     }
     if (!raw.is_receipt) throw new ReceiptReadError('not_a_receipt', null, usage);
+    // Two receipts read as one would silently drop one (seen in testing): refuse instead.
+    if (raw.receipt_count > 1) throw new ReceiptReadError('several_receipts', null, usage);
+    // A photo it can't read would silently lose its items: say which one to retake.
+    const unclear = [...new Set(raw.unclear_photos ?? [])].filter((n) => n >= 1 && n <= images.length).sort((a, b) => a - b);
+    if (unclear.length > 0) throw Object.assign(new ReceiptReadError('unclear_photos', null, usage), { photos: unclear });
     return { raw, usage };
   };
 }

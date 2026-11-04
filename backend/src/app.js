@@ -10,8 +10,9 @@ import { shareRoutes } from './routes/share.js';
  * @param {(images: {mime: string, base64: string}[]) => Promise<object>} [deps.readReceipt]  AI reader (receipts/openai.js)
  * @param {{ upload: Function }} deps.storage  receipt photo storage (storage.js)
  * @param {object} [deps.aiLimits]  receipt-reading limits (receipts/limits.js); defaults from .env
+ * @param {(userId: string) => Promise<void>} [deps.deleteAuthUser]  removes the Supabase Auth login (account deletion)
  */
-export function createApp({ repo, verifyToken, readReceipt, storage, aiLimits }) {
+export function createApp({ repo, verifyToken, readReceipt, storage, aiLimits, deleteAuthUser }) {
   const app = express();
   app.disable('x-powered-by');
   app.use(cors({ origin: process.env.CLIENT_ORIGIN ? process.env.CLIENT_ORIGIN.split(',') : true }));
@@ -20,7 +21,7 @@ export function createApp({ repo, verifyToken, readReceipt, storage, aiLimits })
 
   app.get('/api/health', (req, res) => res.json({ ok: true }));
   app.use('/api/share', shareRoutes(repo));
-  app.use('/api/me', meRoutes({ repo, verifyToken, readReceipt, storage, aiLimits }));
+  app.use('/api/me', meRoutes({ repo, verifyToken, readReceipt, storage, aiLimits, deleteAuthUser }));
 
   app.use('/api', (req, res) => res.status(404).json({ error: 'not_found' }));
   app.use((err, req, res, next) => {

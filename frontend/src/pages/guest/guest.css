@@ -39,8 +39,42 @@
 .share {
   position: relative;
   z-index: 1;
-  max-width: calc(100% - 4.5rem);
   margin-top: var(--space-2xl);
+}
+
+/* Name and Join, at the top of the sheet before the items: a compact row */
+.join {
+  padding: var(--space-xl) 0 var(--space-sm);
+}
+
+.join__row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+}
+
+.join__row .field-input {
+  min-height: 44px;
+  padding: 0 1.125rem;
+  font-size: 1rem; /* 16px: below that, iPhone zooms the page in on tap */
+}
+
+.join__row .pill {
+  min-height: 44px;
+  padding: 0 1.25rem;
+}
+
+/* Only there with a message (kept in the page so screen readers announce it) */
+.join__error {
+  margin-top: var(--space-sm);
+  font-size: var(--text-caption);
+  color: var(--danger);
+  text-align: center;
+  text-wrap: pretty;
+}
+
+.join__error:empty {
+  display: none;
 }
 
 .share__label {

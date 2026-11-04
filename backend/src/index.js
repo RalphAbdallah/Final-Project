@@ -10,6 +10,9 @@ if (missing.length) {
   console.error(`Missing ${missing.join(', ')} in backend/.env (see .env.example).`);
   process.exit(1);
 }
+if (String(process.env.AI_LIMITS).toLowerCase() === 'off') {
+  console.warn('AI_LIMITS=off: receipt-reading limits are disabled. Never set this on Render.');
+}
 if (!process.env.OPENAI_API_KEY) {
   console.warn('OPENAI_API_KEY is empty: reading receipt photos is off until you add it to backend/.env.');
 }
@@ -44,6 +47,10 @@ const app = createApp({
   verifyToken: supabaseVerifier({ url: SUPABASE_URL, serviceKey: SUPABASE_SERVICE_ROLE_KEY }),
   readReceipt: process.env.OPENAI_API_KEY ? openAiReceiptReader(readerOptions()) : null,
   storage: supabaseStorage(supabaseAdmin),
+  async deleteAuthUser(userId) {
+    const { error } = await supabaseAdmin.auth.admin.deleteUser(userId);
+    if (error) throw new Error(`Could not delete the login: ${error.message}`);
+  },
 });
 
 const port = Number(process.env.PORT) || 3001;

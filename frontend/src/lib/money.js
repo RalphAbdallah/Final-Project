@@ -34,6 +34,18 @@ export function parseMoney(text, currency = 'USD') {
   return /^\d{1,10}$/.test(clean) ? Number(clean) : null;
 }
 
+/**
+ * What a share's extras are made of, for "Items $10 + tax (11%) and service $2.10":
+ * "tax (11%) and service", "tax (11%)", "service", or null when there are none.
+ * Tax counts only when it's added (not already in the prices); a $0 charge is left out.
+ */
+export function extrasLabel({ tax, taxRate, taxIncluded, service }) {
+  const parts = [];
+  if (tax > 0 && !taxIncluded) parts.push(taxRate ? `tax (${taxRate}%)` : 'tax');
+  if (service > 0) parts.push('service');
+  return parts.length ? parts.join(' and ') : null;
+}
+
 /** Totals to round a share up to: the next whole unit, then the next two round steps. $17.40 → $18, $20, $25. */
 export function roundUpTargets(minor, currency = 'USD') {
   const [unit, step] = currency === 'USD' ? [100, 500] : [10_000, 50_000];

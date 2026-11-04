@@ -1,0 +1,121 @@
+/* The payer's bill screen. Top, sheet, items and breakdown come from guest.css. */
+.bill-screen__links {
+  display: flex;
+  gap: var(--space-sm);
+}
+
+.bill-screen__heading {
+  margin-top: var(--space-xl);
+}
+
+/* Same as the other screen titles (newbill__title) */
+.bill-screen__venue {
+  font-size: var(--text-title);
+  font-weight: 750;
+  line-height: 1.12;
+  letter-spacing: -0.02em;
+  text-wrap: balance;
+}
+
+.bill-screen__heading .venue__meta {
+  margin-top: var(--space-xs);
+}
+
+.bill-screen__section {
+  margin-top: var(--space-xl);
+}
+
+.bill-screen__empty {
+  padding: var(--space-md) 0;
+  font-size: var(--text-label);
+  color: var(--ink-muted);
+}
+
+/* People: list rows like items, full bleed, hairlines between */
+.people {
+  padding: 0;
+  list-style: none;
+}
+
+.person {
+  display: flex;
+  align-items: center;
+  gap: var(--space-md);
+  width: calc(100% + var(--gutter) * 2);
+  min-height: 4.5rem;
+  margin-inline: calc(var(--gutter) * -1);
+  padding: var(--space-md) var(--gutter);
+  border: 0;
+  border-bottom: 1px solid var(--day-line);
+  background: none;
+  color: var(--ink);
+  font: inherit;
+  text-align: left;
+}
+
+.person--button {
+  cursor: pointer;
+  transition: background-color var(--dur-fast) var(--ease-out);
+}
+
+.person--button:active {
+  background: var(--day-sunken);
+}
+
+.person--button > svg {
+  flex: none;
+  color: var(--ink-muted);
+}
+
+.person__main {
+  display: grid;
+  flex: 1;
+  min-width: 0;
+}
+
+.person__name {
+  overflow-wrap: anywhere;
+  font-size: var(--text-label);
+  font-weight: 600;
+}
+
+.person__you {
+  font-weight: 400;
+  color: var(--ink-muted);
+}
+
+.person__meta {
+  margin-top: 2px;
+  font-size: var(--text-caption);
+  color: var(--ink-muted);
+}
+
+/* Paid, then the bill changed (PRD Q7): amber, with the word, not the color alone */
+.person__meta--changed {
+  color: var(--status-unpaid-ink);
+  font-weight: 600;
+}
+
+.person__side {
+  display: grid;
+  flex: none;
+  justify-items: end;
+  gap: var(--space-xs);
+}
+
+.person__amount {
+  font-size: var(--text-label);
+  font-weight: 700;
+}
+
+.person-sheet__method {
+  margin-top: var(--space-lg);
+  font-size: var(--text-label);
+}
+
+.person-sheet__changed {
+  margin-top: var(--space-sm);
+  font-size: var(--text-caption);
+  font-weight: 600;
+  color: var(--status-unpaid-ink);
+}

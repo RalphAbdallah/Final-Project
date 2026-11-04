@@ -1,6 +1,7 @@
 import { createContext, useContext, useEffect, useState } from 'react';
 import { Navigate, useLocation } from 'react-router-dom';
-import { clearProfileCache, setTokenSource } from './api.js';
+import { cachedProfile, clearPayerCache, setTokenSource } from './api.js';
+import { clearNewBill } from './newBillStore.js';
 import { supabase } from './supabase.js';
 
 const AuthContext = createContext({ session: undefined });
@@ -15,8 +16,13 @@ export function AuthProvider({ children }) {
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => setSession(data.session));
     const { data } = supabase.auth.onAuthStateChange((event, next) => {
-      // Never show one payer's remembered profile to the next one on this device.
-      if (event === 'SIGNED_OUT' || event === 'SIGNED_IN') clearProfileCache();
+      // Never show one payer's remembered data to the next one on this device. SIGNED_IN
+      // also fires on coming back to the tab (after the camera): clear only for another account.
+      if (event === 'SIGNED_OUT') {
+        clearPayerCache();
+        clearNewBill();
+      }
+      if (event === 'SIGNED_IN' && cachedProfile() && cachedProfile().email !== next?.user?.email) clearPayerCache();
       setSession(next);
     });
     return () => data.subscription.unsubscribe();

@@ -2,19 +2,25 @@
 .amount {
   display: inline-flex;
   align-items: baseline;
-  gap: 0.12em;
   font-weight: 700;
   line-height: 1;
   letter-spacing: -0.03em;
   font-variant-numeric: tabular-nums;
 }
 
+/* Tight like a wallet balance: "$" touches the number, "LBP" keeps a thin space */
 .amount__symbol {
-  margin-right: 0.08em;
+  margin-right: 0.04em;
   font-weight: 600;
 }
 
+.amount__symbol--word {
+  margin-right: 0.14em;
+}
+
 .amount__fraction {
+  /* The dot's own side bearing leaves a gap after the whole number: pull it in */
+  margin-left: -0.06em;
   font-size: 0.55em;
   font-weight: 600;
   letter-spacing: -0.01em;
@@ -95,43 +101,6 @@
   font-weight: 700;
 }
 
-/* Wallet card stack, fanned in from the right edge (inspo image 1) */
-.wallet-stack {
-  position: absolute;
-  top: 50%;
-  right: 0;
-  width: calc(46px + (var(--count, 3) - 1) * 14px);
-  height: 132px;
-  padding: 0;
-  border: 0;
-  background: none;
-  transform: translateY(-38%);
-}
-
-button.wallet-stack {
-  cursor: pointer;
-}
-
-.wallet-card {
-  position: absolute;
-  top: 0;
-  left: calc(var(--i) * 14px);
-  z-index: calc(var(--i) + 1);
-  display: block;
-  width: 88px;
-  height: 132px;
-  padding: 10px 12px;
-  border-radius: 18px;
-  box-shadow:
-    -6px 0 18px oklch(0 0 0 / 0.35),
-    inset 0 1px 0 oklch(1 0 0 / 0.25);
-  transition: transform var(--dur-base) var(--ease-out);
-}
-
-button.wallet-stack:active .wallet-card {
-  transform: translateX(-4px);
-}
-
 /* Wallet app logos, all in the same rounded tile */
 .wallet-logo {
   display: grid;
@@ -173,7 +142,29 @@ button.wallet-stack:active .wallet-card {
   padding: 0;
   border: 0;
   background: transparent;
-  overflow: hidden;
+  /* clip, not hidden: a hidden box still scrolls when showModal() focuses a button
+     on the panel while it is below the screen, which made the sheet jump up. */
+  overflow: clip;
+}
+
+/*
+ * iPhone Safari (iOS 26) colors its status bar from the fixed element at the top edge,
+ * and the see-through scrim showed as a solid black bar over the dimmed page. Under the
+ * status bar we paint the dimmed page color solid instead (Sheet.jsx sets --under to the
+ * page color there), which looks the same as the scrim and gives Safari a color to use.
+ */
+.sheet-status-bar {
+  position: fixed;
+  top: 0;
+  right: 0;
+  left: 0;
+  z-index: 1;
+  height: env(safe-area-inset-top);
+  background-color: color-mix(in srgb, var(--under, black) 50%, black);
+}
+
+.sheet-panel:focus {
+  outline: none;
 }
 
 .sheet-dialog::backdrop {
@@ -188,6 +179,7 @@ button.wallet-stack:active .wallet-card {
 
 .sheet-panel {
   position: absolute;
+  z-index: 2;
   right: 0;
   bottom: 0;
   left: 0;
@@ -226,6 +218,11 @@ button.wallet-stack:active .wallet-card {
   touch-action: none;
 }
 
+/* A long title wraps; the close button keeps its round 44 px */
+.sheet-header .pill--icon {
+  flex: none;
+}
+
 .sheet-title {
   font-size: var(--text-title);
   font-weight: 700;
@@ -253,8 +250,7 @@ button.wallet-stack:active .wallet-card {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .stepper__button,
-  .wallet-card {
+  .stepper__button {
     transition: none;
   }
 }

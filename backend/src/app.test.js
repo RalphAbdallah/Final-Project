@@ -21,6 +21,12 @@ const fakeReader = async (images) => {
   if (images[0].base64 === Buffer.from('not a receipt').toString('base64')) {
     throw Object.assign(new Error('not_a_receipt'), { code: 'not_a_receipt', usage: FAKE_USAGE });
   }
+  if (images[0].base64 === Buffer.from('two receipts').toString('base64')) {
+    throw Object.assign(new Error('several_receipts'), { code: 'several_receipts', usage: FAKE_USAGE });
+  }
+  if (images[0].base64 === Buffer.from('blurry').toString('base64')) {
+    throw Object.assign(new Error('unclear_photos'), { code: 'unclear_photos', photos: [1], usage: FAKE_USAGE });
+  }
   return { usage: FAKE_USAGE, raw: {
     is_receipt: true,
     venue: 'Castle Rooftop',
@@ -45,11 +51,23 @@ const fakeStorage = {
   remove: async (paths) => {
     uploaded = uploaded.filter((p) => !paths.includes(p));
   },
+  signedUrls: async (paths) => paths.map((path) => `https://signed.example/${path}`),
+  removeFolder: async (folder) => {
+    uploaded = uploaded.filter((p) => !p.startsWith(`${folder}/`));
+  },
 };
+let deletedLogins = [];
 
 beforeEach(async () => {
   uploaded = [];
-  app = createApp({ repo: createMemoryRepo(), verifyToken, readReceipt: fakeReader, storage: fakeStorage });
+  deletedLogins = [];
+  app = createApp({
+    repo: createMemoryRepo(),
+    verifyToken,
+    readReceipt: fakeReader,
+    storage: fakeStorage,
+    deleteAuthUser: async (id) => deletedLogins.push(id),
+  });
   const res = await asPayer(request(app).post('/api/me/sample-bill'));
   bill = `/api/share/${res.body.shareToken}`;
 });
@@ -75,6 +93,142 @@ describe('payer auth', () => {
     expect(res.status).toBe(200);
     expect(res.body).toMatchObject({ name: 'Ralph', email: 'ralph@example.com', payouts: [] });
     expect(res.body.bills).toHaveLength(1);
+  });
+
+  it('renames the payer, on their bills too', async () => {
+    const res = await asPayer(request(app).patch('/api/me')).send({ name: '  Ralph   Abdallah ' });
+    expect(res.body.name).toBe('Ralph Abdallah');
+    const view = await request(app).get(bill);
+    expect(view.body.payer.name).toBe('Ralph Abdallah');
+    expect(view.body.members.find((m) => m.isPayer).name).toBe('Ralph Abdallah');
+    expect((await asPayer(request(app).patch('/api/me')).send({ name: '' })).status).toBe(400);
+  });
+
+  it('deletes the account with all its bills and its login', async () => {
+    expect((await asPayer(request(app).delete('/api/me'))).status).toBe(204);
+    expect(deletedLogins).toEqual(['payer-1']);
+    expect((await request(app).get(bill)).status).toBe(404);
+  });
+});
+
+describe('payer bill screen and dashboard', () => {
+  // The sample bill: Ralph (payer) and guests Charbel and Jason, all with claims.
+  async function sampleBill() {
+    const { body } = await asPayer(request(app).get('/api/me'));
+    const id = body.bills[0].id;
+    const view = (await asPayer(request(app).get(`/api/me/bills/${id}`))).body;
+    const member = (name) => view.members.find((m) => m.name === name);
+    return { id, view, member, summary: body.bills[0] };
+  }
+  const setStatus = (id, memberId, status) =>
+    asPayer(request(app).patch(`/api/me/bills/${id}/members/${memberId}`)).send({ status });
+
+  it('lists each bill with what is collected and still owed', async () => {
+    const { summary, view } = await sampleBill();
+    const owed = view.members.filter((m) => !m.isPayer).reduce((acc, m) => acc + m.due, 0);
+    expect(summary).toMatchObject({ venue: 'Mar Mikhael Diner (sample)', guests: 2, collected: 0, outstanding: owed, unpaid: 2 });
+    expect(summary.total).toBe(view.bill.total);
+  });
+
+  it('shows bill total, tips and card total, and every member', async () => {
+    const { view } = await sampleBill();
+    expect(view.bill.card).toBe(view.bill.total + view.bill.tips);
+    expect(view.members.map((m) => m.name)).toEqual(['Ralph', 'Charbel', 'Jason']);
+    expect(view.me.name).toBe('Ralph');
+  });
+
+  it('lets only the payer mark guests paid, snapshots what they paid, and undoes', async () => {
+    const { id, member } = await sampleBill();
+    const charbel = member('Charbel');
+    const paid = await setStatus(id, charbel.id, 'confirmed');
+    const after = paid.body.members.find((m) => m.id === charbel.id);
+    expect(after).toMatchObject({ status: 'confirmed', paidAmount: charbel.due, changed: false });
+    expect(paid.body.bill).toMatchObject({ collected: charbel.due, unpaid: 1 });
+
+    const undone = await setStatus(id, charbel.id, 'unpaid');
+    expect(undone.body.members.find((m) => m.id === charbel.id)).toMatchObject({ status: 'unpaid', paidAmount: null });
+    expect((await setStatus(id, member('Ralph').id, 'unpaid')).body.error).toBe('payer_row');
+    expect((await setStatus(id, charbel.id, 'marked_paid')).status).toBe(400);
+  });
+
+  it('flags a paid guest whose total changed afterwards', async () => {
+    const { id, view, member } = await sampleBill();
+    const jason = member('Jason');
+    await setStatus(id, jason.id, 'confirmed');
+    // The payer adds a service charge, so Jason's share goes up.
+    const items = view.items.map(({ id: itemId, name, price, quantity }) => ({ id: itemId, name, price, quantity }));
+    const edited = await asPayer(request(app).patch(`/api/me/bills/${id}`)).send({
+      venue: view.bill.venue, date: view.bill.date, tax: view.bill.tax, taxRate: view.bill.taxRate,
+      taxIncluded: view.bill.taxIncluded, service: view.bill.service + 1000, items,
+    });
+    expect(edited.status).toBe(200);
+    expect(edited.body.members.find((m) => m.id === jason.id).changed).toBe(true);
+  });
+
+  it('edits items, keeps claims on kept items, and refuses a quantity below what is claimed', async () => {
+    const { id, view } = await sampleBill();
+    const body = (items) => ({
+      venue: 'Renamed', date: view.bill.date, tax: view.bill.tax, taxRate: view.bill.taxRate,
+      taxIncluded: view.bill.taxIncluded, service: view.bill.service, items,
+    });
+    const items = view.items.map(({ id: itemId, name, price, quantity }) => ({ id: itemId, name, price, quantity }));
+    // Pizza: 4 of 5 claimed. Going down to 3 would take a claimed one away.
+    const tooFew = items.map((i) => (i.name === 'Pizza Margherita' ? { ...i, quantity: 3 } : i));
+    const refused = await asPayer(request(app).patch(`/api/me/bills/${id}`)).send(body(tooFew));
+    expect(refused.body).toMatchObject({ error: 'below_claims', item: 'Pizza Margherita', claimed: 4 });
+
+    const ok = await asPayer(request(app).patch(`/api/me/bills/${id}`)).send(
+      body([...items.filter((i) => i.name !== 'Hummus'), { name: 'Water', price: 200, quantity: 2 }]),
+    );
+    expect(ok.body.bill.venue).toBe('Renamed');
+    expect(ok.body.items.map((i) => i.name)).toEqual(['Pizza Margherita', 'Fattoush', 'Fries', 'Fresh lemonade', 'Water']);
+    expect(ok.body.items[0].claimedUnits).toBe(4);
+  });
+
+  it('lets the payer claim their own items, one person per unit', async () => {
+    const { id, view } = await sampleBill();
+    const pizza = view.items.find((i) => i.name === 'Pizza Margherita');
+    const claim = (units) => asPayer(request(app).put(`/api/me/bills/${id}/claims/${pizza.id}`)).send({ units });
+    // Ralph has 1 of the pizzas; 1 more is free, so 3 is too many.
+    expect((await claim(3)).body.error).toBe('not_enough_left');
+    const res = await claim(2);
+    expect(res.body.items.find((i) => i.id === pizza.id)).toMatchObject({ myUnits: 2, claimedUnits: 5 });
+  });
+
+  it('removes an unpaid guest with their claims, but not a paid one', async () => {
+    const { id, member } = await sampleBill();
+    const removed = await asPayer(request(app).delete(`/api/me/bills/${id}/members/${member('Jason').id}`));
+    expect(removed.body.members.map((m) => m.name)).toEqual(['Ralph', 'Charbel']);
+    expect(removed.body.items.find((i) => i.name === 'Hummus').claimedUnits).toBe(0);
+
+    await setStatus(id, member('Charbel').id, 'confirmed');
+    expect((await asPayer(request(app).delete(`/api/me/bills/${id}/members/${member('Charbel').id}`))).body.error).toBe(
+      'member_paid',
+    );
+  });
+
+  it('locks tips once the card is paid', async () => {
+    const { id } = await sampleBill();
+    const { token } = await join('Maya');
+    const res = await asPayer(request(app).put(`/api/me/bills/${id}/card-paid`)).send({ paid: true });
+    expect(res.body.bill.cardPaid).toBe(true);
+    expect((await request(app).patch(`${bill}/me`).set('X-Guest-Token', token).send({ tip: 100 })).body.error).toBe('tip_locked');
+  });
+
+  it('deletes a bill with everything on it, and only your own', async () => {
+    const { id } = await sampleBill();
+    const other = await request(app).delete(`/api/me/bills/${id}`).set('Authorization', 'Bearer payer-2-token');
+    expect(other.status).toBe(404);
+    expect((await asPayer(request(app).delete(`/api/me/bills/${id}`))).status).toBe(204);
+    expect((await asPayer(request(app).get(`/api/me/bills/${id}`))).status).toBe(404);
+    expect((await request(app).get(bill)).status).toBe(404);
+    expect((await asPayer(request(app).get('/api/me'))).body.bills).toEqual([]);
+  });
+
+  it("hides another payer's bill", async () => {
+    const { id } = await sampleBill();
+    const res = await request(app).get(`/api/me/bills/${id}`).set('Authorization', 'Bearer payer-2-token');
+    expect(res.status).toBe(404);
   });
 });
 
@@ -120,31 +274,42 @@ describe('guest flow', () => {
     expect(tooMany.status).toBe(400);
   });
 
+  it('gives each unit to one person only: no claiming past what is left', async () => {
+    // Sample bill: 4 of the 5 pizzas are already claimed, and the one hummus is taken.
+    const maya = await join('Maya');
+    const pizza = maya.view.items.find((i) => i.name === 'Pizza Margherita');
+    const hummus = maya.view.items.find((i) => i.name === 'Hummus');
+    const claim = (who, item, units) =>
+      request(app).put(`${bill}/claims/${item.id}`).set('X-Guest-Token', who.token).send({ units });
+
+    expect((await claim(maya, pizza, 2)).body.error).toBe('not_enough_left');
+    expect((await claim(maya, hummus, 1)).status).toBe(409);
+    expect((await claim(maya, pizza, 1)).status).toBe(200);
+
+    const omar = await join('Omar');
+    expect((await claim(omar, pizza, 1)).body.error).toBe('not_enough_left');
+    // Maya lets hers go: now Omar can have it.
+    await request(app).delete(`${bill}/claims/${pizza.id}`).set('X-Guest-Token', maya.token);
+    expect((await claim(omar, pizza, 1)).status).toBe(200);
+  });
+
   it('rejects claims without a guest token', async () => {
     const { view } = await join();
     const res = await request(app).put(`${bill}/claims/${view.items[0].id}`).send({ units: 1 });
     expect(res.status).toBe(401);
   });
 
-  it('marks paid, locks claims, and undoes', async () => {
-    const { token, view } = await join();
-    const item = view.items[0];
+  it("doesn't let guests change their own payment status: only the payer marks people paid", async () => {
+    const { token } = await join();
     const guest = (req) => req.set('X-Guest-Token', token);
-    await guest(request(app).put(`${bill}/claims/${item.id}`)).send({ units: 1 });
-
-    expect((await guest(request(app).patch(`${bill}/me`)).send({ status: 'marked_paid' })).body.error).toBe(
-      'method_required',
-    );
-
-    const paid = await guest(request(app).patch(`${bill}/me`)).send({ tip: 100, method: 'cash', status: 'marked_paid' });
-    expect(paid.body.me).toMatchObject({ status: 'marked_paid', tip: 100, paidAmount: paid.body.me.due });
-
-    expect((await guest(request(app).delete(`${bill}/claims/${item.id}`))).status).toBe(409);
-    expect((await guest(request(app).patch(`${bill}/me`)).send({ tip: 200 })).status).toBe(409);
-
-    const undone = await guest(request(app).patch(`${bill}/me`)).send({ status: 'unpaid' });
-    expect(undone.body.me).toMatchObject({ status: 'unpaid', paidAmount: null });
-    expect((await guest(request(app).patch(`${bill}/me`)).send({ status: 'confirmed' })).status).toBe(409);
+    for (const status of ['marked_paid', 'confirmed', 'unpaid']) {
+      const res = await guest(request(app).patch(`${bill}/me`)).send({ method: 'cash', status });
+      expect(res.status).toBe(403);
+      expect(res.body.error).toBe('payer_only');
+    }
+    // Tip and method still save, and the guest stays unpaid.
+    const res = await guest(request(app).patch(`${bill}/me`)).send({ tip: 100, method: 'cash' });
+    expect(res.body.me).toMatchObject({ status: 'unpaid', tip: 100, method: 'cash' });
   });
 
   it('only accepts payment methods the payer set up', async () => {
@@ -178,6 +343,20 @@ describe('bills from photos', () => {
     expect(uploaded).toEqual([]);
   });
 
+  it('refuses photos of more than one receipt, and stores nothing', async () => {
+    const res = await photo(asPayer(request(app).post('/api/me/receipts/read')), 'two receipts');
+    expect(res.status).toBe(422);
+    expect(res.body.error).toBe('several_receipts');
+    expect(uploaded).toEqual([]);
+  });
+
+  it('says which photos are too unclear to read, and stores nothing', async () => {
+    const res = await photo(asPayer(request(app).post('/api/me/receipts/read')), 'blurry');
+    expect(res.status).toBe(422);
+    expect(res.body).toEqual({ error: 'unclear_photos', photos: [1] });
+    expect(uploaded).toEqual([]);
+  });
+
   it('needs photos and a login', async () => {
     expect((await asPayer(request(app).post('/api/me/receipts/read'))).body.error).toBe('no_photos');
     expect((await photo(request(app).post('/api/me/receipts/read'))).status).toBe(401);
@@ -190,7 +369,10 @@ describe('bills from photos', () => {
     expect(created.status).toBe(201);
 
     const summary = await asPayer(request(app).get(`/api/me/bills/${created.body.id}`));
-    expect(summary.body).toMatchObject({ venue: 'Castle Rooftop', total: 2650, items: 2, guests: 0 });
+    expect(summary.body.bill).toMatchObject({ venue: 'Castle Rooftop', total: 2650 });
+    expect(summary.body.items).toHaveLength(2);
+    expect(summary.body.members).toEqual([expect.objectContaining({ name: 'Ralph', isPayer: true })]);
+    expect(summary.body.photos).toEqual(read.body.photos.map((p) => `https://signed.example/${p}`));
 
     const guestView = await request(app).get(`/api/share/${created.body.shareToken}`);
     expect(guestView.body.members).toEqual([expect.objectContaining({ name: 'Ralph', isPayer: true })]);

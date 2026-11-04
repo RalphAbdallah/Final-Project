@@ -1,0 +1,122 @@
+/* The payer's account. Dark top and white sheet like every other screen. */
+.profile__spacer {
+  width: 44px;
+}
+
+.profile__who {
+  display: grid;
+  justify-items: center;
+  margin-top: var(--space-lg);
+  padding-bottom: var(--space-lg);
+  text-align: center;
+}
+
+.profile__avatar {
+  width: 4.5rem;
+  height: 4.5rem;
+  font-size: var(--text-heading);
+}
+
+.profile__name {
+  margin-top: var(--space-md);
+  font-size: var(--text-title);
+  font-weight: 750;
+  line-height: 1.12;
+  letter-spacing: -0.02em;
+  text-wrap: balance;
+}
+
+.profile__email {
+  margin-top: var(--space-xs);
+  font-size: var(--text-label);
+  color: var(--night-muted);
+  overflow-wrap: anywhere;
+}
+
+/* Lime text on white: a team choice (2026-11-03), against DESIGN.md's lime-deep rule. Low contrast. */
+.profile__edit {
+  color: var(--lime);
+  text-decoration: none;
+}
+
+.profile__section {
+  margin-top: var(--space-xl);
+}
+
+/* List rows, hairlines between, full bleed, like the items */
+.profile__list {
+  padding: 0;
+  list-style: none;
+}
+
+.profile__row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-md);
+  width: calc(100% + var(--gutter) * 2);
+  min-height: 4rem;
+  margin-inline: calc(var(--gutter) * -1);
+  padding: var(--space-sm) var(--gutter);
+  border: 0;
+  border-bottom: 1px solid var(--day-line);
+  background: none;
+  color: var(--ink);
+  font: inherit;
+  text-align: left;
+}
+
+.profile__row--button {
+  cursor: pointer;
+  transition: background-color var(--dur-fast) var(--ease-out);
+}
+
+.profile__row--button:active {
+  background: var(--day-sunken);
+}
+
+.profile__row--button > svg {
+  flex: none;
+  color: var(--ink-muted);
+}
+
+.profile__row-label {
+  flex: none;
+  font-size: var(--text-label);
+  font-weight: 600;
+}
+
+.profile__row-value {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  font-size: var(--text-label);
+  color: var(--ink-muted);
+  text-align: right;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.profile__hint {
+  margin-top: var(--space-md);
+  font-size: var(--text-caption);
+  color: var(--ink-muted);
+}
+
+.profile__error {
+  margin-top: var(--space-md);
+}
+
+/* Delete at the end of the sheet, light red, like Delete bill */
+.profile__delete {
+  margin-top: var(--space-xl);
+  background: var(--danger-soft);
+}
+
+/* Less room under Delete account, before the Log out bar */
+.profile__surface {
+  padding-bottom: var(--space-xs);
+}
+
+.profile__logout {
+  min-height: 52px;
+}

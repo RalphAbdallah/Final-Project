@@ -27,16 +27,9 @@
   padding-top: var(--space-lg);
 }
 
-/* On the auth pages, errors are just red text, no box */
+/* Sit close under the field it's about: the form's 16px gap minus 10px */
 .auth-form .form-error {
-  /* Sit close under the field it's about: the form's 16px gap minus 10px */
   margin-top: -10px;
-  padding: 0;
-  background: none;
-  font-size: var(--text-caption);
-  font-weight: 400;
-  text-align: center;
-  text-wrap: balance;
 }
 
 .auth-form .pill--primary {

@@ -83,6 +83,28 @@ export function createPostgresRepo(pool) {
         [id, email, name],
       ),
 
+    /**
+     * Renames the payer (or syncs a changed email). A new name also goes on their own
+     * row in each bill, unless a guest on that bill already has it.
+     */
+    async updateUser(id, { name, email }) {
+      if (email !== undefined) await pool.query('update users set email = $2 where id = $1', [id, email]);
+      if (name === undefined) return;
+      await pool.query('update users set name = $2 where id = $1', [id, name]);
+      await pool.query(
+        `update bill_members m set name = $2
+         where m.is_payer and m.bill_id in (select id from bills where payer_id = $1)
+           and not exists (select 1 from bill_members o
+                           where o.bill_id = m.bill_id and o.id <> m.id and lower(o.name) = lower($2))`,
+        [id, name],
+      );
+    },
+
+    /** The payer's row; bills, members, claims, wallets and photo rows go with it (cascade). */
+    async deleteUser(id) {
+      await pool.query('delete from users where id = $1', [id]);
+    },
+
     listPayouts,
 
     async savePayout(userId, wallet, payUrl) {
@@ -97,12 +119,88 @@ export function createPostgresRepo(pool) {
       await pool.query('delete from payout_methods where user_id = $1 and wallet = $2', [userId, wallet]);
     },
 
-    async listBills(userId) {
-      const rows = await all(
-        'select id, venue, date, share_token from bills where payer_id = $1 order by created_at desc limit 50',
-        [userId],
+    /** The payer's bills, newest first, each with the state its summary needs (2 round trips for all). */
+    async listBillStates(userId) {
+      const bills = (await all('select * from bills where payer_id = $1 order by created_at desc limit 50', [userId])).map(
+        toBill,
       );
-      return rows.map((r) => ({ id: r.id, venue: r.venue, date: r.date, shareToken: r.share_token }));
+      if (bills.length === 0) return [];
+      const ids = bills.map((b) => b.id);
+      const [items, members, claims] = await Promise.all([
+        all('select id, bill_id, name, price, quantity, position from items where bill_id = any($1) order by position, created_at', [
+          ids,
+        ]),
+        all('select * from bill_members where bill_id = any($1) order by seq', [ids]),
+        all(
+          `select c.item_id, c.member_id, c.units, i.bill_id from item_claims c
+           join items i on i.id = c.item_id where i.bill_id = any($1)`,
+          [ids],
+        ),
+      ]);
+      return bills.map((bill) => ({
+        bill,
+        state: {
+          items: items.filter((i) => i.bill_id === bill.id),
+          members: members.filter((m) => m.bill_id === bill.id).map(toMember),
+          claims: claims
+            .filter((c) => c.bill_id === bill.id)
+            .map((c) => ({ itemId: c.item_id, memberId: c.member_id, units: c.units })),
+        },
+      }));
+    },
+
+    listPhotos: async (billId) =>
+      (await all('select path from bill_photos where bill_id = $1 order by position', [billId])).map((r) => r.path),
+
+    /**
+     * The payer's edits (PRD M2 review fields): items keep their id (and claims) when
+     * sent with one, are added without, and are deleted (with their claims) when left out.
+     */
+    async updateBill(billId, fields, items) {
+      const client = await pool.connect();
+      try {
+        await client.query('begin');
+        await client.query(
+          `update bills set venue = $2, date = $3, tax = $4, tax_rate = $5, tax_included = $6, service = $7
+           where id = $1`,
+          [billId, fields.venue, fields.date, fields.tax, fields.taxRate, fields.taxIncluded, fields.service],
+        );
+        const kept = items.filter((i) => i.id).map((i) => i.id);
+        await client.query('delete from items where bill_id = $1 and not (id = any($2::uuid[]))', [billId, kept]);
+        for (const [position, item] of items.entries()) {
+          if (item.id) {
+            await client.query(
+              'update items set name = $3, price = $4, quantity = $5, position = $6 where id = $1 and bill_id = $2',
+              [item.id, billId, item.name, item.price, item.quantity, position],
+            );
+          } else {
+            await client.query(
+              'insert into items (bill_id, name, price, quantity, position) values ($1, $2, $3, $4, $5)',
+              [billId, item.name, item.price, item.quantity, position],
+            );
+          }
+        }
+        await client.query('commit');
+      } catch (err) {
+        await client.query('rollback');
+        throw err;
+      } finally {
+        client.release();
+      }
+    },
+
+    /** Deletes a bill; items, members, claims and photo rows go with it (cascade). */
+    async deleteBill(billId) {
+      await pool.query('delete from bills where id = $1', [billId]);
+    },
+
+    async setCardPaid(billId, at) {
+      await pool.query('update bills set card_paid_at = $2 where id = $1', [billId, at]);
+    },
+
+    /** Removes a guest; their claims go with them (cascade). */
+    async deleteMember(memberId) {
+      await pool.query('delete from bill_members where id = $1 and not is_payer', [memberId]);
     },
 
     async createSampleBill(user) {
@@ -261,8 +359,15 @@ export function createPostgresRepo(pool) {
       };
     },
 
-    findGuest: async (billId, guestToken) =>
-      toMember(await one('select * from bill_members where bill_id = $1 and guest_token = $2', [billId, guestToken])),
+    // By share token, so it can run alongside getBillByShareToken (one round trip, not two).
+    findGuestByShareToken: async (shareToken, guestToken) =>
+      toMember(
+        await one(
+          `select m.* from bill_members m join bills b on b.id = m.bill_id
+           where b.share_token = $1 and m.guest_token = $2`,
+          [shareToken, guestToken],
+        ),
+      ),
 
     async addGuest(billId, name, guestToken) {
       try {
@@ -279,15 +384,9 @@ export function createPostgresRepo(pool) {
       }
     },
 
-    getItem: (billId, itemId) =>
-      one('select id, name, price, quantity from items where id = $1 and bill_id = $2', [itemId, billId]),
-
+    /** Sets my units; false when that's more than the units nobody else has (migration 004). */
     async setClaim(itemId, memberId, units) {
-      await pool.query(
-        `insert into item_claims (item_id, member_id, units) values ($1, $2, $3)
-         on conflict (item_id, member_id) do update set units = excluded.units`,
-        [itemId, memberId, units],
-      );
+      return (await one('select claim_units($1, $2, $3) as ok', [itemId, memberId, units])).ok;
     },
 
     async removeClaim(itemId, memberId) {
