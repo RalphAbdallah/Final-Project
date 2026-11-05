@@ -1,4 +1,4 @@
-﻿/* The splIT screen: a dark top, a white sheet over it, a docked action bar. */
+/* The splIT screen: a dark top, a white sheet over it, a docked action bar. */
 .screen {
   position: relative;
   display: flex;
@@ -150,79 +150,6 @@
     background: var(--night);
     -webkit-backdrop-filter: none;
     backdrop-filter: none;
-  }
-}
-
-/* Stacking pages (lib/stack.jsx). Forward: the new page slides in from the right with a
-   shadow on its edge, the old one eases 25% left and dims under it. Back: the reverse,
-   the top page on top. Ease-out, no bounce (CLAUDE.md). */
-@media (prefers-reduced-motion: no-preference) {
-  ::view-transition-old(root),
-  ::view-transition-new(root) {
-    animation-duration: 0.42s;
-    animation-timing-function: cubic-bezier(0.32, 0.72, 0, 1);
-    animation-fill-mode: both;
-    mix-blend-mode: normal;
-  }
-
-  html[data-nav='forward']::view-transition-old(root) {
-    animation-name: stack-under;
-  }
-
-  html[data-nav='forward']::view-transition-new(root) {
-    animation-name: stack-in;
-    box-shadow: -10px 0 30px oklch(0 0 0 / 0.35);
-  }
-
-  html[data-nav='back']::view-transition-old(root) {
-    z-index: 1;
-    animation-name: stack-out;
-    box-shadow: -10px 0 30px oklch(0 0 0 / 0.35);
-  }
-
-  html[data-nav='back']::view-transition-new(root) {
-    animation-name: stack-reveal;
-  }
-}
-
-/* Back after the browser already animated it (iPhone swipe-back): no second animation */
-html[data-nav='none']::view-transition-group(*),
-html[data-nav='none']::view-transition-old(*),
-html[data-nav='none']::view-transition-new(*) {
-  animation: none !important;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  ::view-transition-group(*),
-  ::view-transition-old(*),
-  ::view-transition-new(*) {
-    animation: none !important;
-  }
-}
-
-@keyframes stack-in {
-  from {
-    transform: translateX(100%);
-  }
-}
-
-@keyframes stack-under {
-  to {
-    transform: translateX(-25%);
-    filter: brightness(0.75);
-  }
-}
-
-@keyframes stack-out {
-  to {
-    transform: translateX(100%);
-  }
-}
-
-@keyframes stack-reveal {
-  from {
-    transform: translateX(-25%);
-    filter: brightness(0.75);
   }
 }
 

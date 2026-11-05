@@ -1,6 +1,6 @@
 import LoadingScreen from '../../components/Loading.jsx';
 import { useEffect, useId, useRef, useState } from 'react';
-import { useStackNavigate } from '../../lib/stack.jsx';
+import { useNavigate } from 'react-router-dom';
 import Icon from '../../components/Icon.jsx';
 import WalletLogo from '../../components/WalletLogo.jsx';
 import { api, cachedProfile } from '../../lib/api.js';
@@ -10,7 +10,7 @@ import './getpaid.css';
 
 /** Get-paid setup (PRD M1): pick wallets, then upload each wallet's receive-money QR code. */
 export default function GetPaid() {
-  const navigate = useStackNavigate();
+  const navigate = useNavigate();
   // Start from the remembered profile (instant), then refresh it.
   const [profile, setProfile] = useState(cachedProfile);
   const [failed, setFailed] = useState(false);
@@ -68,7 +68,7 @@ export default function GetPaid() {
       setIndex(0);
       // Nothing to link (cash only): it's saved, back to the account.
       if (picked.length > 0) setStep('add');
-      else navigate('/', { replace: true, back: true });
+      else navigate('/', { replace: true });
     } catch {
       // Stay on this step so they can try again.
     } finally {
@@ -79,7 +79,7 @@ export default function GetPaid() {
   // Each wallet's link is saved as soon as its QR code is read, so Finish just goes home.
   function next() {
     if (index + 1 < picked.length) setIndex(index + 1);
-    else navigate('/', { replace: true, back: true });
+    else navigate('/', { replace: true });
   }
 
   function back() {
@@ -114,7 +114,7 @@ export default function GetPaid() {
           <button
             type="button"
             className="pill pill--night pill--icon"
-            onClick={() => (step === 'choose' ? navigate('/', { back: true }) : back())}
+            onClick={() => (step === 'choose' ? navigate('/') : back())}
             aria-label={step === 'choose' ? 'Back to start' : 'Back'}
           >
             <Icon name="chevronLeft" />

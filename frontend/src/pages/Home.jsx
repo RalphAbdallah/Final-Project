@@ -1,6 +1,6 @@
 import LoadingScreen from '../components/Loading.jsx';
 import { useEffect, useId, useRef, useState } from 'react';
-import { StackLink, useStackNavigate } from '../lib/stack.jsx';
+import { Link, useNavigate } from 'react-router-dom';
 import Icon from '../components/Icon.jsx';
 import { api, cachedProfile } from '../lib/api.js';
 import { useAuth } from '../lib/auth.jsx';
@@ -44,19 +44,19 @@ function Landing() {
         </p>
       </div>
       <div className="landing__actions">
-          <StackLink className="pill pill--primary pill--block" to="/login">
+          <Link className="pill pill--primary pill--block" to="/login">
             Log in
-          </StackLink>
-          <StackLink className="pill pill--night pill--block" to="/signup">
+          </Link>
+          <Link className="pill pill--night pill--block" to="/signup">
             Create an account
-          </StackLink>
+          </Link>
       </div>
     </main>
   );
 }
 
 function PayerHome() {
-  const navigate = useStackNavigate();
+  const navigate = useNavigate();
   const cameraId = useId();
   const cameraInput = useRef(null);
   // Start from the remembered profile (instant when coming back), then refresh it.
@@ -117,9 +117,9 @@ function PayerHome() {
         <p className="wordmark">
           spl<span>IT</span>
         </p>
-        <StackLink className="pill pill--night pill--icon" to="/profile" aria-label="Profile">
+        <Link className="pill pill--night pill--icon" to="/profile" aria-label="Profile">
           <Icon name="person" />
-        </StackLink>
+        </Link>
       </div>
       <div className="home__body">
         <h1 className="home__title">Hi {profile.name.trim().split(/\s+/)[0]}.</h1>
@@ -137,7 +137,7 @@ function PayerHome() {
           <ul>
             {profile.bills.map((bill) => (
               <li key={bill.id}>
-                <StackLink className="home__bill" to={`/bills/${bill.id}`}>
+                <Link className="home__bill" to={`/bills/${bill.id}`}>
                   <span className="home__bill-main">
                     <span className="home__bill-venue">{bill.venue}</span>
                     <span className="home__bill-date">
@@ -154,7 +154,7 @@ function PayerHome() {
                           : 'Nobody yet'}
                     </span>
                   </span>
-                </StackLink>
+                </Link>
               </li>
             ))}
           </ul>

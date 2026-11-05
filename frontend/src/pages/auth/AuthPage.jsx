@@ -1,6 +1,5 @@
 import { useId, useState } from 'react';
-import { Link, Navigate, useLocation } from 'react-router-dom';
-import { StackLink, useStackNavigate } from '../../lib/stack.jsx';
+import { Link, Navigate, useLocation, useNavigate } from 'react-router-dom';
 import PasswordInput from '../../components/PasswordInput.jsx';
 import { authErrorMessage, useAuth } from '../../lib/auth.jsx';
 import { supabase } from '../../lib/supabase.js';
@@ -12,7 +11,7 @@ const MIN_PASSWORD = 8;
 export default function AuthPage({ mode }) {
   const isSignup = mode === 'signup';
   const { session } = useAuth();
-  const navigate = useStackNavigate();
+  const navigate = useNavigate();
   const location = useLocation();
   const [fields, setFields] = useState({ name: '', email: '', password: '' });
   const [error, setError] = useState(null);
@@ -60,9 +59,9 @@ export default function AuthPage({ mode }) {
           We sent a link to <strong>{fields.email.trim()}</strong>. Open it on this device to finish creating your
           account.
         </p>
-        <StackLink back className="pill pill--night" to="/login">
+        <Link className="pill pill--night" to="/login">
           Back to log in
-        </StackLink>
+        </Link>
       </main>
     );
   }
@@ -71,9 +70,9 @@ export default function AuthPage({ mode }) {
     <div className="screen auth">
       <header className="top on-night">
         <div className="top__bar">
-          <StackLink back to="/" className="wordmark" aria-label="splIT home">
+          <Link to="/" className="wordmark" aria-label="splIT home">
             spl<span>IT</span>
-          </StackLink>
+          </Link>
         </div>
         <div className="auth__heading">
           <h1 className="auth__title">{isSignup ? 'Sign up' : 'Log in'}</h1>

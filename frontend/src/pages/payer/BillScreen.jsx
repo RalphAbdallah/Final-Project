@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { useParams } from 'react-router-dom';
-import { StackLink } from '../../lib/stack.jsx';
+import { Link, useParams } from 'react-router-dom';
 import Amount from '../../components/Amount.jsx';
 import Icon from '../../components/Icon.jsx';
 import ItemRow, { myMax } from '../../components/ItemRow.jsx';
@@ -120,9 +119,9 @@ export default function BillScreen() {
           {phase === 'missing' ? 'It may belong to another account.' : 'Check your connection, then try again.'}
         </p>
         {phase === 'missing' ? (
-          <StackLink back className="pill pill--night" to="/">
+          <Link className="pill pill--night" to="/">
             Go home
-          </StackLink>
+          </Link>
         ) : (
           <button type="button" className="pill pill--night" onClick={load}>
             Try again
@@ -193,16 +192,16 @@ export default function BillScreen() {
     <div className="screen bill-screen">
       <header className="top on-night">
         <div className="top__bar">
-          <StackLink back to="/" className="pill pill--night pill--icon" aria-label="Home">
+          <Link to="/" className="pill pill--night pill--icon" aria-label="Home">
             <Icon name="chevronLeft" />
-          </StackLink>
+          </Link>
           <div className="bill-screen__links">
-            <StackLink className="pill pill--night pill--small" to={`/bills/${id}/edit`}>
+            <Link className="pill pill--night pill--small" to={`/bills/${id}/edit`}>
               Edit
-            </StackLink>
-            <StackLink className="pill pill--night pill--small" to={`/bills/${id}/share`}>
+            </Link>
+            <Link className="pill pill--night pill--small" to={`/bills/${id}/share`}>
               Share
-            </StackLink>
+            </Link>
           </div>
         </div>
 
@@ -406,16 +405,16 @@ function LoadingBill({ id, summary }) {
     <div className="screen bill-screen" aria-busy="true" aria-label="Loading the bill">
       <header className="top on-night">
         <div className="top__bar">
-          <StackLink back to="/" className="pill pill--night pill--icon" aria-label="Home">
+          <Link to="/" className="pill pill--night pill--icon" aria-label="Home">
             <Icon name="chevronLeft" />
-          </StackLink>
+          </Link>
           <div className="bill-screen__links">
-            <StackLink className="pill pill--night pill--small" to={`/bills/${id}/edit`}>
+            <Link className="pill pill--night pill--small" to={`/bills/${id}/edit`}>
               Edit
-            </StackLink>
-            <StackLink className="pill pill--night pill--small" to={`/bills/${id}/share`}>
+            </Link>
+            <Link className="pill pill--night pill--small" to={`/bills/${id}/share`}>
               Share
-            </StackLink>
+            </Link>
           </div>
         </div>
         <div className="bill-screen__heading">

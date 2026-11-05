@@ -1,6 +1,6 @@
 import LoadingScreen from '../../components/Loading.jsx';
 import { useEffect, useId, useState } from 'react';
-import { StackLink, useStackNavigate } from '../../lib/stack.jsx';
+import { Link, useNavigate } from 'react-router-dom';
 import Icon from '../../components/Icon.jsx';
 import Sheet from '../../components/Sheet.jsx';
 import PasswordInput from '../../components/PasswordInput.jsx';
@@ -27,7 +27,7 @@ function authMessage(error) {
 
 /** The payer's account: who they are, how they get paid, their login, and leaving. */
 export default function Profile() {
-  const navigate = useStackNavigate();
+  const navigate = useNavigate();
   const [profile, setProfile] = useState(cachedProfile);
   const [failed, setFailed] = useState(false);
   const [leaving, setLeaving] = useState(false);
@@ -49,7 +49,7 @@ export default function Profile() {
     setLeaving(true);
     // Leave this page first: it requires a login, so signing out here would send it to
     // the login screen instead of the landing page.
-    navigate('/', { replace: true, back: true });
+    navigate('/', { replace: true });
     await supabase.auth.signOut();
   }
 
@@ -58,9 +58,9 @@ export default function Profile() {
       <main className="state on-night">
         <h1 className="state__title">Couldn't load your account</h1>
         <p className="state__text">Check your connection, then try again.</p>
-        <StackLink back className="pill pill--night" to="/">
+        <Link className="pill pill--night" to="/">
           Go home
-        </StackLink>
+        </Link>
       </main>
     );
   }
@@ -73,9 +73,9 @@ export default function Profile() {
     <div className="screen profile">
       <header className="top on-night">
         <div className="top__bar">
-          <StackLink back to="/" className="pill pill--night pill--icon" aria-label="Home">
+          <Link to="/" className="pill pill--night pill--icon" aria-label="Home">
             <Icon name="chevronLeft" />
-          </StackLink>
+          </Link>
           <p className="wordmark">
             spl<span>IT</span>
           </p>
@@ -96,9 +96,9 @@ export default function Profile() {
             <h2 id="methods-title" className="surface__title">
               Payment methods
             </h2>
-            <StackLink className="text-button profile__edit" to="/get-paid">
+            <Link className="text-button profile__edit" to="/get-paid">
               Edit
-            </StackLink>
+            </Link>
           </div>
           <ul className="profile__list">
             {[...wallets, 'cash'].map((id) => (
@@ -177,7 +177,7 @@ export default function Profile() {
         open={editing === 'delete'}
         onClose={close}
         onDeleted={async () => {
-          navigate('/', { replace: true, back: true });
+          navigate('/', { replace: true });
           await supabase.auth.signOut();
         }}
       />

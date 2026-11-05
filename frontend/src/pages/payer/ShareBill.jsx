@@ -1,7 +1,6 @@
 import QRCode from 'qrcode';
 import { useEffect, useRef, useState } from 'react';
-import { useParams } from 'react-router-dom';
-import { StackLink } from '../../lib/stack.jsx';
+import { Link, useParams } from 'react-router-dom';
 import Amount from '../../components/Amount.jsx';
 import Icon from '../../components/Icon.jsx';
 import { api, cachedBill, cachedProfile } from '../../lib/api.js';
@@ -59,9 +58,9 @@ export default function ShareBill() {
       <main className="state on-night">
         <h1 className="state__title">Couldn't find this bill</h1>
         <p className="state__text">It may belong to another account.</p>
-        <StackLink back className="pill pill--night" to="/">
+        <Link className="pill pill--night" to="/">
           Go home
-        </StackLink>
+        </Link>
       </main>
     );
   }
@@ -70,9 +69,9 @@ export default function ShareBill() {
     return (
       <main className="share-screen on-night" aria-busy="true" aria-label="Loading">
         <div className="top__bar">
-          <StackLink back to={`/bills/${id}`} className="pill pill--night pill--icon" aria-label="Back to the bill">
+          <Link to={`/bills/${id}`} className="pill pill--night pill--icon" aria-label="Back to the bill">
             <Icon name="chevronLeft" />
-          </StackLink>
+          </Link>
           <p className="wordmark">
             spl<span>IT</span>
           </p>
@@ -96,9 +95,9 @@ export default function ShareBill() {
   return (
     <main className="share-screen on-night">
       <div className="top__bar">
-        <StackLink back to={`/bills/${id}`} className="pill pill--night pill--icon" aria-label="Back to the bill">
+        <Link to={`/bills/${id}`} className="pill pill--night pill--icon" aria-label="Back to the bill">
           <Icon name="chevronLeft" />
-        </StackLink>
+        </Link>
         <p className="wordmark">
           spl<span>IT</span>
         </p>
