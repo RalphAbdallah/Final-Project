@@ -27,6 +27,25 @@ if (typeof window !== 'undefined') {
       'hasUAVisualTransition' in event ? event.hasUAVisualTransition : window.matchMedia('(pointer: coarse)').matches;
     document.documentElement.dataset.nav = animatedByBrowser ? 'none' : 'back';
   });
+
+  // Even with no animation, a view transition first freezes the screen on a picture of
+  // the page being left until the next one is drawn: after Safari's swipe had already
+  // shown the previous page, the page swiped away flashed back for a moment. So when the
+  // browser animated it, the router's view transition is skipped: the page just changes.
+  const startViewTransition = document.startViewTransition?.bind(document);
+  if (startViewTransition) {
+    document.startViewTransition = (arg) => {
+      if (document.documentElement.dataset.nav !== 'none') return startViewTransition(arg);
+      const update = typeof arg === 'function' ? arg : arg?.update;
+      const done = Promise.resolve().then(() => update?.());
+      const settled = done.then(
+        () => undefined,
+        () => undefined,
+      );
+      // Shaped like a ViewTransition, which is all the router uses.
+      return { updateCallbackDone: settled, ready: settled, finished: settled, skipTransition() {}, types: new Set() };
+    };
+  }
 }
 
 /** A <Link> that stacks forward, or unstacks with `back`. */
