@@ -115,6 +115,25 @@
   pointer-events: none;
 }
 
+/*
+ * Dark full-page screens get the same strip, in dark. Without one, Safari kept the
+ * last tint it had found: coming back from a light screen (Profile) to Home left a
+ * light grey band behind the toolbar.
+ */
+.home::after,
+.landing::after,
+.state::after,
+.share-screen::after {
+  content: '';
+  position: fixed;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  height: 2px;
+  background: var(--night);
+  pointer-events: none;
+}
+
 /* Toasts sit just above the dock */
 .toast-region {
   position: fixed;
