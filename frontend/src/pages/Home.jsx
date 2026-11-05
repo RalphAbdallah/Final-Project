@@ -1,5 +1,6 @@
+import LoadingScreen from '../components/Loading.jsx';
 import { useEffect, useId, useRef, useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { StackLink, useStackNavigate } from '../lib/stack.jsx';
 import Icon from '../components/Icon.jsx';
 import { api, cachedProfile } from '../lib/api.js';
 import { useAuth } from '../lib/auth.jsx';
@@ -20,7 +21,7 @@ function owedText(bills) {
 /** Landing for visitors; the payer's dashboard once logged in (PRD M10). */
 export default function Home() {
   const { session } = useAuth();
-  if (session === undefined) return <main className="state on-night" aria-busy="true" aria-label="Loading" />;
+  if (session === undefined) return <LoadingScreen />;
   return session ? <PayerHome /> : <Landing />;
 }
 
@@ -42,19 +43,19 @@ function Landing() {
         </p>
       </div>
       <div className="landing__actions">
-          <Link className="pill pill--primary pill--block" to="/login">
+          <StackLink className="pill pill--primary pill--block" to="/login">
             Log in
-          </Link>
-          <Link className="pill pill--night pill--block" to="/signup">
+          </StackLink>
+          <StackLink className="pill pill--night pill--block" to="/signup">
             Create an account
-          </Link>
+          </StackLink>
       </div>
     </main>
   );
 }
 
 function PayerHome() {
-  const navigate = useNavigate();
+  const navigate = useStackNavigate();
   const cameraId = useId();
   const cameraInput = useRef(null);
   // Start from the remembered profile (instant when coming back), then refresh it.
@@ -101,9 +102,7 @@ function PayerHome() {
       </main>
     );
   }
-  if (!profile) return <main className="state on-night" aria-busy="true" aria-label="Loading" />;
-
-  const wallets = profile.payouts.map((p) => p.wallet);
+  if (!profile) return <LoadingScreen />;
 
   return (
     <main className="home on-night">
@@ -111,9 +110,9 @@ function PayerHome() {
         <p className="wordmark">
           spl<span>IT</span>
         </p>
-        <Link className="pill pill--night pill--icon" to="/profile" aria-label="Profile">
+        <StackLink className="pill pill--night pill--icon" to="/profile" aria-label="Profile">
           <Icon name="person" />
-        </Link>
+        </StackLink>
       </div>
       <div className="home__body">
         <h1 className="home__title">Hi {profile.name.trim().split(/\s+/)[0]}.</h1>
@@ -131,7 +130,7 @@ function PayerHome() {
           <ul>
             {profile.bills.map((bill) => (
               <li key={bill.id}>
-                <Link className="home__bill" to={`/bills/${bill.id}`}>
+                <StackLink className="home__bill" to={`/bills/${bill.id}`}>
                   <span className="home__bill-main">
                     <span className="home__bill-venue">{bill.venue}</span>
                     <span className="home__bill-date">
@@ -148,7 +147,7 @@ function PayerHome() {
                           : 'Nobody yet'}
                     </span>
                   </span>
-                </Link>
+                </StackLink>
               </li>
             ))}
           </ul>
@@ -173,9 +172,7 @@ function PayerHome() {
             }}
           />
         </label>
-        <Link className="pill pill--night pill--block" to="/get-paid">
-          {wallets.length ? 'Edit payment methods' : 'Set up payment methods'}
-        </Link>
+        {/* Payment methods live in Profile (Payment methods → Edit), not here (team choice). */}
       </div>
     </main>
   );

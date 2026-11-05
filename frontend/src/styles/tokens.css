@@ -32,8 +32,9 @@
   --status-confirmed: oklch(0.66 0.16 150);
   --status-confirmed-soft: oklch(0.95 0.05 150);
   --status-confirmed-ink: oklch(0.42 0.11 150);
-  --danger: oklch(0.55 0.2 25);
-  --danger-soft: oklch(0.96 0.03 25);
+  /* A true red (hue 29, was a slightly pink 25), still dark enough for text on white */
+  --danger: oklch(0.55 0.23 29);
+  --danger-soft: oklch(0.96 0.035 29);
 
   /* Wallets (Neo and Suyool are placeholders, PRD Q19) */
   --wallet-whish: oklch(0.6 0.21 18);

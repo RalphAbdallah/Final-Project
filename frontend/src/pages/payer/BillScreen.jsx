@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import { useParams } from 'react-router-dom';
+import { StackLink } from '../../lib/stack.jsx';
 import Amount from '../../components/Amount.jsx';
 import Icon from '../../components/Icon.jsx';
 import ItemRow, { myMax } from '../../components/ItemRow.jsx';
@@ -12,15 +13,18 @@ import { extrasLabel, formatMoney } from '../../lib/money.js';
 import { hueFor, initials } from '../../lib/people.js';
 import { previewClaim } from '../../lib/preview.js';
 import { walletName } from '../../lib/wallets.js';
+import { TipSheet } from '../guest/PayFlow.jsx';
 import '../guest/guest.css';
 import './newbill.css';
 import './bill.css';
 
 const POLL_MS = 5000;
+const PHOTO_LINK_MS = 5 * 60 * 1000;
 
 const ERRORS = {
   not_enough_left: 'Someone just claimed that one.',
   member_paid: 'Mark them as not paid first.',
+  too_many_requests: "That's a lot of taps. Wait a moment and try again.",
   offline: "You're offline. Check your connection and try again.",
 };
 
@@ -35,14 +39,32 @@ export default function BillScreen() {
   const [phase, setPhase] = useState(() => (cachedBill(id) ? 'ready' : 'loading'));
   const [openMember, setOpenMember] = useState(null);
   const [viewing, setViewing] = useState(null);
+  const [tipOpen, setTipOpen] = useState(false);
   const [toast, showToast] = useToast();
   const latest = useRef(0);
   const inflight = useRef(0);
+  const photoLinks = useRef(new Map());
+
+  // Every answer carries freshly signed photo links (new token each time), which made the
+  // images download and flash again on each refresh. Keep the link already shown for the
+  // same photo while it's under 5 minutes old (links last 10, backend/src/storage.js).
+  const stablePhotos = useCallback((next) => {
+    if (!next?.photos) return next;
+    const now = Date.now();
+    const photos = next.photos.map((url) => {
+      const path = url.split('?')[0];
+      const kept = photoLinks.current.get(path);
+      if (kept && now - kept.at < PHOTO_LINK_MS) return kept.url;
+      photoLinks.current.set(path, { url, at: now });
+      return url;
+    });
+    return { ...next, photos };
+  }, []);
 
   const load = useCallback(async () => {
     const call = ++latest.current;
     try {
-      const next = await api.payerBill(id);
+      const next = stablePhotos(await api.payerBill(id));
       if (call !== latest.current) return;
       setView(next);
       setPhase('ready');
@@ -51,7 +73,7 @@ export default function BillScreen() {
       if (err.status === 404) setPhase('missing');
       else setPhase((p) => (p === 'ready' ? p : 'error'));
     }
-  }, [id]);
+  }, [id, stablePhotos]);
 
   // Fetch the edit and share screens' code now, so Edit and Share don't open on a wait.
   useEffect(() => {
@@ -75,7 +97,7 @@ export default function BillScreen() {
       if (optimistic) setView(optimistic);
       inflight.current += 1;
       try {
-        const next = await request();
+        const next = stablePhotos(await request());
         if (call === latest.current) setView(next);
         return next;
       } catch (err) {
@@ -86,7 +108,7 @@ export default function BillScreen() {
         inflight.current -= 1;
       }
     },
-    [load, showToast],
+    [load, showToast, stablePhotos],
   );
 
   if (phase === 'loading') return <LoadingBill id={id} summary={cachedProfile()?.bills?.find((b) => b.id === id)} />;
@@ -98,9 +120,9 @@ export default function BillScreen() {
           {phase === 'missing' ? 'It may belong to another account.' : 'Check your connection, then try again.'}
         </p>
         {phase === 'missing' ? (
-          <Link className="pill pill--night" to="/">
+          <StackLink back className="pill pill--night" to="/">
             Go home
-          </Link>
+          </StackLink>
         ) : (
           <button type="button" className="pill pill--night" onClick={load}>
             Try again
@@ -117,6 +139,24 @@ export default function BillScreen() {
   const guests = members.filter((m) => !m.isPayer);
   const paid = guests.filter((m) => m.status === 'confirmed').length;
   const selected = members.find((m) => m.id === openMember);
+  // The whole bill is covered: what guests paid back plus the payer's own share reaches
+  // the bill total (tips included). The payer's share is never "collected", so it counts here.
+  const payerRow = members.find((m) => m.isPayer);
+  const covered = guests.length > 0 && bill.collected + (payerRow?.due ?? 0) >= bill.card;
+  const payerTip = payerRow?.tip ?? 0;
+
+  // Closes on the tap; the tips and the bill total update before the server answers.
+  function savePayerTip(tip) {
+    setTipOpen(false);
+    return mutate(
+      () => api.setPayerTip(id, tip),
+      (v) => ({
+        ...v,
+        bill: { ...v.bill, tips: v.bill.tips - payerTip + tip, card: v.bill.card - payerTip + tip },
+        members: v.members.map((m) => (m.isPayer ? { ...m, tip, due: m.due - payerTip + tip } : m)),
+      }),
+    );
+  }
 
   function changeUnits(item, next) {
     const units = Math.max(0, Math.min(next, myMax(item)));
@@ -153,16 +193,16 @@ export default function BillScreen() {
     <div className="screen bill-screen">
       <header className="top on-night">
         <div className="top__bar">
-          <Link to="/" className="pill pill--night pill--icon" aria-label="Home">
+          <StackLink back to="/" className="pill pill--night pill--icon" aria-label="Home">
             <Icon name="chevronLeft" />
-          </Link>
+          </StackLink>
           <div className="bill-screen__links">
-            <Link className="pill pill--night pill--small" to={`/bills/${id}/edit`}>
+            <StackLink className="pill pill--night pill--small" to={`/bills/${id}/edit`}>
               Edit
-            </Link>
-            <Link className="pill pill--night pill--small" to={`/bills/${id}/share`}>
+            </StackLink>
+            <StackLink className="pill pill--night pill--small" to={`/bills/${id}/share`}>
               Share
-            </Link>
+            </StackLink>
           </div>
         </div>
 
@@ -175,7 +215,7 @@ export default function BillScreen() {
 
         <div className="share">
           <div className="share__label">
-            <span>Card total</span>
+            <span>Bill total</span>
             {bill.cardPaid && (
               <span className="chip chip--confirmed">
                 <span className="chip__dot" aria-hidden="true" />
@@ -183,11 +223,16 @@ export default function BillScreen() {
               </span>
             )}
           </div>
-          <Amount minor={bill.card} currency={currency} className="amount--hero share__amount" />
-          <p className="share__detail num">
-            Bill {money(bill.total)}
-            {` + tips ${money(bill.tips)}`}
-          </p>
+          <Amount
+            minor={bill.card}
+            currency={currency}
+            className={`amount--hero share__amount${covered ? ' is-covered' : ''}`}
+          />
+          {bill.tips > 0 && (
+            <p className="share__detail num">
+              Subtotal {money(bill.total)} + tips {money(bill.tips)}
+            </p>
+          )}
         </div>
       </header>
 
@@ -217,11 +262,9 @@ export default function BillScreen() {
               <dd>{money(bill.outstanding)}</dd>
             </div>
             {bill.unclaimed > 0 && (
-              <div className="breakdown__unclaimed">
-                <dt>
-                  <span className="chip__dot" aria-hidden="true" />
-                  Not claimed yet
-                </dt>
+              // What nobody has claimed: "Unpaid", in red, as on the guest page (team choice).
+              <div className="breakdown__unclaimed is-danger">
+                <dt>Unpaid</dt>
                 <dd>{money(bill.unclaimed)}</dd>
               </div>
             )}
@@ -240,6 +283,18 @@ export default function BillScreen() {
               <ItemRow key={item.id} item={item} currency={currency} memberById={memberById} meId={me.id} onChange={changeUnits} />
             ))}
           </ul>
+          {/* The payer's own tip (PRD M11): counts in the tips; locked once submitted. */}
+          <div className="my-tip">
+            <div className="my-tip__text">
+              <p className="item__name">Your tip</p>
+              <p className="item__meta num">{payerTip > 0 ? money(payerTip) : 'No tip'}</p>
+            </div>
+            {!bill.cardPaid && (
+              <button type="button" className="pill pill--day pill--small" onClick={() => setTipOpen(true)}>
+                {payerTip > 0 ? 'Change' : 'Add tip'}
+              </button>
+            )}
+          </div>
         </section>
 
         {photos.length > 0 && (
@@ -249,7 +304,7 @@ export default function BillScreen() {
             </h2>
             <div className="newbill__photos">
               {photos.map((url, i) => (
-                <button key={url} type="button" className="thumb" onClick={() => setViewing(i)} aria-label={`View photo ${i + 1}`}>
+                <button key={url.split('?')[0]} type="button" className="thumb" onClick={() => setViewing(i)} aria-label={`View photo ${i + 1}`}>
                   <img src={url} alt="" />
                 </button>
               ))}
@@ -277,44 +332,55 @@ export default function BillScreen() {
               <dd>{money(bill.service)}</dd>
             </div>
           )}
-          <div className="breakdown__total">
-            <dt>Bill total</dt>
-            <dd>{money(bill.total)}</dd>
-          </div>
-          <div>
-            <dt>Tips</dt>
-            <dd>{money(bill.tips)}</dd>
-          </div>
-          <div className="breakdown__total">
-            <dt>Card total</dt>
-            <dd>{money(bill.card)}</dd>
-          </div>
+          {/* No tips: the receipt's total is the bill total. With tips: that becomes the
+              subtotal, and the bill total (what goes on the card) includes the tips. */}
+          {bill.tips > 0 ? (
+            <>
+              <div className="breakdown__total">
+                <dt>Subtotal</dt>
+                <dd>{money(bill.total)}</dd>
+              </div>
+              <div>
+                <dt>Tips</dt>
+                <dd>{money(bill.tips)}</dd>
+              </div>
+              <div className="breakdown__total">
+                <dt>Bill total</dt>
+                <dd>{money(bill.card)}</dd>
+              </div>
+            </>
+          ) : (
+            <div className="breakdown__total">
+              <dt>Bill total</dt>
+              <dd>{money(bill.card)}</dd>
+            </div>
+          )}
         </dl>
       </main>
 
       <div className="dock on-day">
         {bill.cardPaid ? (
-          <div className="paid">
-            <span className="paid__icon paid__icon--confirmed" aria-hidden="true">
-              <Icon name="check" size={18} />
-            </span>
-            <div className="paid__text">
-              <p className="paid__title num">Card paid · {money(bill.card)}</p>
-              <p className="paid__sub">Tips are locked at what you charged.</p>
-            </div>
-            <button type="button" className="pill pill--day" onClick={() => setCardPaid(false)}>
-              Undo
-            </button>
-          </div>
+          // Submitted: tips are locked at what was charged. Red, to take it back.
+          <button type="button" className="pill pill--danger pill--block" onClick={() => setCardPaid(false)}>
+            Undo submit
+          </button>
         ) : (
           // After charging the card at the table: locks tips at what was charged (PRD Q16).
-          <button type="button" className="pill pill--primary pill--block pill--split" onClick={() => setCardPaid(true)}>
-            <span>Card paid</span>
-            <span className="num">{money(bill.card)}</span>
+          <button type="button" className="pill pill--primary pill--block" onClick={() => setCardPaid(true)}>
+            Submit
           </button>
         )}
       </div>
       {toast}
+
+      <TipSheet
+        open={tipOpen}
+        onClose={() => setTipOpen(false)}
+        total={payerRow?.total ?? 0}
+        currentTip={payerTip}
+        currency={currency}
+        onSaveTip={savePayerTip}
+      />
 
       <PersonSheet
         member={selected}
@@ -340,16 +406,16 @@ function LoadingBill({ id, summary }) {
     <div className="screen bill-screen" aria-busy="true" aria-label="Loading the bill">
       <header className="top on-night">
         <div className="top__bar">
-          <Link to="/" className="pill pill--night pill--icon" aria-label="Home">
+          <StackLink back to="/" className="pill pill--night pill--icon" aria-label="Home">
             <Icon name="chevronLeft" />
-          </Link>
+          </StackLink>
           <div className="bill-screen__links">
-            <Link className="pill pill--night pill--small" to={`/bills/${id}/edit`}>
+            <StackLink className="pill pill--night pill--small" to={`/bills/${id}/edit`}>
               Edit
-            </Link>
-            <Link className="pill pill--night pill--small" to={`/bills/${id}/share`}>
+            </StackLink>
+            <StackLink className="pill pill--night pill--small" to={`/bills/${id}/share`}>
               Share
-            </Link>
+            </StackLink>
           </div>
         </div>
         <div className="bill-screen__heading">
@@ -366,7 +432,7 @@ function LoadingBill({ id, summary }) {
         </div>
         <div className="share">
           <div className="share__label">
-            <span>Card total</span>
+            <span>Bill total</span>
           </div>
           <div className="skeleton" style={{ width: '58%', height: 56, marginTop: 8 }} />
         </div>
@@ -455,9 +521,8 @@ function PersonSheet({ member, bill, currency, onClose, onStatus, onRemove }) {
                 Mark as not paid
               </button>
             ) : (
-              <button type="button" className="pill pill--primary pill--block pill--split" onClick={() => onStatus(m, 'confirmed')}>
-                <span>Mark as paid</span>
-                <span className="num">{money(m.due)}</span>
+              <button type="button" className="pill pill--primary pill--block" onClick={() => onStatus(m, 'confirmed')}>
+                Mark as paid
               </button>
             )}
             {!isPaid &&

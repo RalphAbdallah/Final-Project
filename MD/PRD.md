@@ -203,8 +203,9 @@ Added after the proposal (team decision, 2 November 2026). Replaces the proposal
 - The tip is stored on the member, separate from their share. It is never spread across the table or rounded with the split.
 - The member pays share plus tip, and can change the tip until they mark paid.
 - The payer's bill shows three numbers: **bill total** (the receipt), **tips** (everyone's tips added up) and **card total** (the two together), which is what the payer charges to their card.
-- The payer can add a tip of their own; it counts in the tips total.
-- After charging the card, the payer taps **Card paid** (proposed, Q16). That locks tips: the card total stays at what was charged, and the "Add a tip?" sheet stops appearing, because a tip added later would never reach the restaurant.
+- The payer can add a tip of their own; it counts in the tips total. ("Your tip" under their items on the bill screen, `PUT /api/me/bills/:id/tip`, locked once the card is paid.)
+- Wording on the payer's bill (5 November 2026): with no tips, the receipt total is the **Bill total**; with tips, it shows as the **Subtotal** and the card total is called the **Bill total**.
+- After charging the card, the payer taps **Card paid** (proposed, Q16; the button reads **Submit** since 5 November 2026). That locks tips: the card total stays at what was charged, and the "Add a tip?" sheet stops appearing, because a tip added later would never reach the restaurant.
 
 **Accept when:** shares add up to $370 and tips to $30, and the payer's bill shows bill total $370, tips $30, card total $400.
 
@@ -303,10 +304,10 @@ The five tables in the proposal stay, with the changes below: `users` (payers on
 **Security and privacy**
 - Share and guest tokens come from a cryptographic random source, at least 128 bits.
 - The payer's wallet links are shown only to guests who have joined that bill, and only links on that wallet's own domain are accepted.
-- All input validated on the server; join and claim endpoints rate-limited.
+- All input validated on the server; join and claim endpoints rate-limited (built 5 November 2026: joins 20 per bill and 30 per address per 10 minutes; claims 60 per person and 300 per address per minute; over the limit returns 429 with how long to wait).
 - Receipts and proof screenshots in private storage, served through short-lived signed URLs.
 - Secrets live only in server environment variables. The OpenAI key never reaches the browser.
-- **AI spend is capped** (added 3 November 2026): every receipt read that reaches OpenAI is recorded with its tokens (`ai_usage`). A payer gets at most 10 reads an hour, 30 a day and 150,000 tokens a day; all payers together get 2,000,000 tokens a day, the backstop against many sign-ups. One read at a time per payer. Limits are checked before photos are accepted, and the payer is told when they can try again. Failed reads count, since they still cost. All limits can be changed in `backend/.env`. A monthly budget cap should also be set in the OpenAI dashboard.
+- **AI spend is capped** (added 3 November 2026): every receipt read that reaches OpenAI is recorded with its tokens (`ai_usage`). A payer gets at most 3 reads an hour, 10 a day and 150,000 tokens a day; all payers together get 250,000 tokens a day, the backstop against many sign-ups (lowered 5 November 2026; was 10, 30 and 2,000,000). One read at a time per payer. Limits are checked before photos are accepted, and the payer is told when they can try again. Failed reads count, since they still cost. All limits can be changed in `backend/.env`. A monthly budget cap should also be set in the OpenAI dashboard.
 - HTTPS everywhere (the clipboard API requires it).
 
 **Accessibility.** WCAG 2.2 AA. Touch targets at least 44 × 44 px. The core guest flow works with VoiceOver and TalkBack. Honors `prefers-reduced-motion` and `prefers-reduced-transparency`.

@@ -160,6 +160,8 @@ export const api = {
     ),
   removePayerClaim: (id, itemId) =>
     request(`/me/bills/${at(id)}/claims/${at(itemId)}`, { method: 'DELETE', payer: true }).then(rememberBill(id)),
+  setPayerTip: (id, tip) =>
+    request(`/me/bills/${at(id)}/tip`, { method: 'PUT', body: { tip }, payer: true }).then(rememberBill(id)),
   setCardPaid: (id, paid) =>
     request(`/me/bills/${at(id)}/card-paid`, { method: 'PUT', body: { paid }, payer: true }).then(rememberBill(id)),
 };

@@ -3,12 +3,6 @@ import { joinNames } from '../lib/people.js';
 import Avatars from './Avatars.jsx';
 import Stepper from './Stepper.jsx';
 
-function claimText(item) {
-  if (item.claimedUnits === 0) return 'Not claimed yet';
-  if (item.quantity === 1) return 'Claimed';
-  return `${Math.min(item.claimedUnits, item.quantity)} of ${item.quantity} claimed`;
-}
-
 /**
  * One person per unit: what I can have is what nobody else has claimed. Never below 0:
  * bills from before the rule can hold more claims than units ("3 of 2").
@@ -35,8 +29,7 @@ export default function ItemRow({ item, currency, memberById, meId, joined = tru
             {formatMoney(item.price, currency)}
             {item.quantity > 1 ? ' each' : ''}
           </span>
-          <span aria-hidden="true">·</span>
-          <span>{claimText(item)}</span>
+          {/* Who has it, as avatars only (no "2 of 5 claimed"); the + stops at what's left */}
           {claimants.length > 0 && <Avatars people={claimants} />}
           {others.length > 0 && <span className="visually-hidden">by {joinNames(others.map((m) => m.name))}</span>}
         </p>

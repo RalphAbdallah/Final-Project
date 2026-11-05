@@ -119,3 +119,33 @@
   font-weight: 600;
   color: var(--status-unpaid-ink);
 }
+
+/* Bill total turns green once it's fully covered (collected + the payer's own share) */
+.share__amount {
+  transition: color var(--dur-base) var(--ease-out);
+}
+
+.share__amount.is-covered {
+  --amount-muted: var(--status-confirmed);
+  color: var(--status-confirmed);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .share__amount {
+    transition: none;
+  }
+}
+/* The payer's own tip, under Your items: a list row like the items */
+.my-tip {
+  display: flex;
+  align-items: center;
+  gap: var(--space-md);
+  min-height: 4.5rem;
+  padding: var(--space-md) 0;
+  border-bottom: 1px solid var(--day-line);
+}
+
+.my-tip__text {
+  flex: 1;
+  min-width: 0;
+}

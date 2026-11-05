@@ -142,9 +142,25 @@
   padding: 0;
   border: 0;
   background: transparent;
-  /* clip, not hidden: a hidden box still scrolls when showModal() focuses a button
-     on the panel while it is below the screen, which made the sheet jump up. */
-  overflow: clip;
+  /* Not a scroll container (the browser's own style for a modal dialog is overflow:
+     auto, and even hidden still scrolls): when showModal() focused a button on the
+     panel while it was below the screen, the dialog scrolled and the sheet jumped up.
+     Visible, not clip, so the panel's white extension below can show (see below). */
+  overflow: visible;
+}
+
+/* White under the sheet's bottom edge. Normally off screen; when the iPhone keyboard
+   opens, Safari shifts the page up to keep the field in view, and this keeps the
+   page's text from showing through behind the see-through keyboard. */
+.sheet-panel::after {
+  content: '';
+  position: absolute;
+  top: 100%;
+  right: 0;
+  left: 0;
+  height: 100vh;
+  background: var(--day);
+  pointer-events: none;
 }
 
 /*

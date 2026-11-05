@@ -47,6 +47,22 @@ export default function Sheet({ open, onClose, title, description, children, foo
     dialog.querySelector('.sheet-panel')?.focus({ preventScroll: true });
   }, [mounted]);
 
+
+  // While open, a finger drag scrolls nothing: not the page behind (iPhone ignores
+  // overflow: hidden on it, and the keyboard makes it scrollable) and not the sheet,
+  // unless the sheet's content really is taller than the sheet. Dragging the sheet
+  // down to close still works: it runs on pointer events, not on scrolling.
+  useEffect(() => {
+    if (!mounted) return undefined;
+    const block = (event) => {
+      const body = event.target.closest?.('.sheet-body');
+      if (body && body.scrollHeight > body.clientHeight + 1) return;
+      event.preventDefault();
+    };
+    document.addEventListener('touchmove', block, { passive: false });
+    return () => document.removeEventListener('touchmove', block);
+  }, [mounted]);
+
   const startDrag = (event) => dragControls.start(event);
 
   return (

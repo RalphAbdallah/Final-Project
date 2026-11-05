@@ -10,11 +10,12 @@ export function aiLimitsFromEnv(env = process.env) {
   if (String(env.AI_LIMITS).toLowerCase() === 'off') return null;
   const num = (key, fallback) => (Number(env[key]) > 0 ? Number(env[key]) : fallback);
   return {
-    readsPerHour: num('AI_READS_PER_HOUR', 10),
-    readsPerDay: num('AI_READS_PER_DAY', 30),
+    // Lowered 2026-11-05 (team): 3 an hour, 10 a day, 250k tokens a day for everyone.
+    readsPerHour: num('AI_READS_PER_HOUR', 3),
+    readsPerDay: num('AI_READS_PER_DAY', 10),
     userTokensPerDay: num('AI_USER_TOKENS_PER_DAY', 150_000),
     // Everyone together: the backstop against many sign-ups.
-    globalTokensPerDay: num('AI_GLOBAL_TOKENS_PER_DAY', 2_000_000),
+    globalTokensPerDay: num('AI_GLOBAL_TOKENS_PER_DAY', 250_000),
   };
 }
 

@@ -6,7 +6,7 @@ import { guestView } from '../views.js';
 const MAX_TIP = 100_000_000;
 
 /** Guest routes: the share token picks the bill, `X-Guest-Token` picks the member (PRD §10). */
-export function shareRoutes(repo) {
+export function shareRoutes(repo, limit) {
   const router = Router();
 
   router.param('shareToken', async (req, res, next, shareToken) => {
@@ -36,7 +36,8 @@ export function shareRoutes(repo) {
 
   router.get('/:shareToken', (req, res) => sendView(req, res));
 
-  router.post('/:shareToken/join', async (req, res) => {
+  // Rate limited per bill and per address (rateLimits.js).
+  router.post('/:shareToken/join', limit.join, async (req, res) => {
     const raw = req.body?.name;
     const name = typeof raw === 'string' ? raw.trim().replace(/\s+/g, ' ') : '';
     if (name.length < 1 || name.length > 40) return res.status(400).json({ error: 'invalid_name' });
@@ -64,8 +65,9 @@ export function shareRoutes(repo) {
     res.json(guestView(req.bill, result.state, result.state.members.find((m) => m.id === req.member.id)));
   }
 
-  router.put('/:shareToken/claims/:itemId', requireMember, (req, res) => changeClaim(req, res, { units: req.body?.units }));
-  router.delete('/:shareToken/claims/:itemId', requireMember, (req, res) => changeClaim(req, res, { remove: true }));
+  // Rate limited per guest and per address (rateLimits.js).
+  router.put('/:shareToken/claims/:itemId', requireMember, limit.claim, (req, res) => changeClaim(req, res, { units: req.body?.units }));
+  router.delete('/:shareToken/claims/:itemId', requireMember, limit.claim, (req, res) => changeClaim(req, res, { remove: true }));
 
   router.patch('/:shareToken/me', requireMember, async (req, res) => {
     const { tip, method, status } = req.body ?? {};

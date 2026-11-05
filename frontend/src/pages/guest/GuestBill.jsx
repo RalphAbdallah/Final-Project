@@ -10,8 +10,7 @@ import { formatDate } from '../../lib/dates.js';
 import { extrasLabel, formatMoney } from '../../lib/money.js';
 import { hueFor, initials } from '../../lib/people.js';
 import { previewClaim } from '../../lib/preview.js';
-import PaySheet from './PaySheet.jsx';
-import TipSheet from './TipSheet.jsx';
+import PayFlow from './PayFlow.jsx';
 import './guest.css';
 
 const POLL_MS = 5000;
@@ -27,7 +26,6 @@ export default function GuestBill() {
   });
   const [phase, setPhase] = useState(() => (cachedGuestBill(shareToken) ? 'ready' : 'loading'));
   const [sheet, setSheet] = useState(null);
-  const [tipAsked, setTipAsked] = useState(false);
   const [toast, showToast] = useToast();
   const joinInput = useRef(null);
   const latest = useRef(0);
@@ -76,6 +74,8 @@ export default function GuestBill() {
           showToast('You were removed from this bill. Join again to keep going.');
         } else if (err.code === 'not_enough_left') {
           showToast('Someone just claimed that one.');
+        } else if (err.code === 'too_many_requests') {
+          showToast(`That's a lot of taps. Try again in ${waitText(err.data?.retryAfter)}.`);
         } else if (err.code === 'offline') {
           showToast("You're offline. Check your connection and try again.");
         } else {
@@ -94,7 +94,7 @@ export default function GuestBill() {
   if (phase === 'missing') {
     return (
       <main className="state on-night">
-        <h1 className="state__title">This bill link doesn't work</h1>
+        <h1 className="state__title">This bill doesn't exist</h1>
         <p className="state__text">Ask the person who paid to show you the QR code again.</p>
       </main>
     );
@@ -141,7 +141,6 @@ export default function GuestBill() {
     latest.current += 1;
     setView((v) => ({ ...v, me: null, items: v.items.map((i) => ({ ...i, myUnits: 0, myShare: 0 })) }));
     setToken(null);
-    setTipAsked(false);
   }
 
   function changeUnits(item, next) {
@@ -158,15 +157,15 @@ export default function GuestBill() {
     );
   }
 
+  // On to paying on the tap, with the new amount; the save runs behind it. If it fails,
+  // the toast says so and the sheet goes back to the tip.
   async function saveTip(tip) {
+    setSheet('pay');
     const ok = await mutate(
       () => api.updateMe(shareToken, token, { tip }),
       (v) => ({ ...v, me: { ...v.me, tip, due: v.me.total + tip } }),
     );
-    if (ok) {
-      setTipAsked(true);
-      setSheet('pay');
-    }
+    if (!ok) setSheet((s) => (s === 'pay' ? 'tip' : s));
   }
 
   function chooseMethod(method) {
@@ -176,9 +175,11 @@ export default function GuestBill() {
     );
   }
 
+  // Done: the tip first (their current tip filled in), then the pay sheet. Once the card
+  // is paid, tips are locked, so straight to paying.
   function openPay() {
     if (!me) return;
-    setSheet(tipAsked || bill.cardPaid || me.tip > 0 ? 'pay' : 'tip');
+    setSheet(bill.cardPaid ? 'pay' : 'tip');
   }
 
   return (
@@ -270,11 +271,8 @@ export default function GuestBill() {
             <dd>{money(bill.total)}</dd>
           </div>
           {bill.unclaimed > 0 && (
-            <div className="breakdown__unclaimed">
-              <dt>
-                <span className="chip__dot" aria-hidden="true" />
-                Not claimed yet
-              </dt>
+            <div className="breakdown__unclaimed is-danger">
+              <dt>Unpaid</dt>
               <dd>{money(bill.unclaimed)}</dd>
             </div>
           )}
@@ -286,14 +284,10 @@ export default function GuestBill() {
       {me && (
         <div className="dock on-day">
           {me.status === 'unpaid' && (
-            <button
-              type="button"
-              className="pill pill--primary pill--block pill--split"
-              onClick={openPay}
-              disabled={me.total === 0}
-            >
-              <span>{tipAsked || me.tip > 0 ? `Pay ${payerFirst}` : 'Done'}</span>
-              <span className="num">{money(tipAsked || me.tip > 0 ? me.due : me.total)}</span>
+            // Always just Done: it starts the tip, then the pay sheet. Closing either one
+            // comes back here, to Done.
+            <button type="button" className="pill pill--primary pill--block" onClick={openPay} disabled={me.total === 0}>
+              Done
             </button>
           )}
 
@@ -306,9 +300,8 @@ export default function GuestBill() {
                 <p className="paid__title num">
                   {me.status === 'confirmed' ? 'Paid' : 'Marked as paid'} · {money(me.paidAmount ?? me.due)}
                 </p>
-                <p className="paid__sub">
-                  {me.status === 'confirmed' ? `${payerFirst} marked you as paid.` : `Waiting for ${payerFirst} to confirm.`}
-                </p>
+                {/* Paid: just "Paid · $X" (team choice). The older marked-paid state still explains itself. */}
+                {me.status !== 'confirmed' && <p className="paid__sub">Waiting for {payerFirst} to confirm.</p>}
               </div>
             </div>
           )}
@@ -318,35 +311,32 @@ export default function GuestBill() {
       {toast}
 
       {me && (
-        <>
-          <TipSheet
-            open={sheet === 'tip'}
-            onClose={() => {
-              setTipAsked(true);
-              setSheet(null);
-            }}
-            total={me.total}
-            currentTip={me.tip}
-            currency={currency}
-            payerName={payer.name}
-            onSubmit={saveTip}
-          />
-          <PaySheet
-            open={sheet === 'pay'}
-            onClose={() => setSheet(null)}
-            me={me}
-            bill={bill}
-            payerName={payerFirst}
-            currency={currency}
-            onChooseMethod={chooseMethod}
-            onEditTip={bill.cardPaid ? null : () => setSheet('tip')}
-          />
-        </>
+        <PayFlow
+          // One sheet: the tip, then paying, swapped in place. Closing (×, drag, Escape)
+          // isn't an answer: back to Done, which asks again. Add or No tip saves it
+          // (saveTip) and moves the same sheet on to paying.
+          step={sheet}
+          onClose={() => setSheet(null)}
+          me={me}
+          payerName={payerFirst}
+          currency={currency}
+          cardPaid={bill.cardPaid}
+          onSaveTip={saveTip}
+          onChooseMethod={chooseMethod}
+        />
       )}
     </div>
   );
 }
 
+
+/** "30 seconds", "2 minutes": how long a rate limit asks to wait. */
+function waitText(seconds) {
+  if (!(seconds > 0)) return 'a moment';
+  if (seconds < 60) return `${seconds} seconds`;
+  const min = Math.ceil(seconds / 60);
+  return min === 1 ? '1 minute' : `${min} minutes`;
+}
 
 const JOIN_ERRORS = {
   empty: 'Type your name to join.',
@@ -376,7 +366,9 @@ function JoinForm({ inputRef, onJoin }) {
   const message =
     error === 'name_taken'
       ? `Someone called ${name.trim()} already joined. Add your last initial.`
-      : error
+      : error === 'too_many_requests'
+        ? 'A lot of people just joined this bill. Try again in a few minutes.'
+        : error
         ? (JOIN_ERRORS[error] ?? "Couldn't join. Try again.")
         : null;
 

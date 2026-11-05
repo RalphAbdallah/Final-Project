@@ -126,15 +126,141 @@
   pointer-events: none;
 }
 
+/* A floating pill as wide as its message, see-through over a blur of what's behind
+   (floating chrome is the one place translucency is allowed, CLAUDE.md) */
 .toast {
-  padding: var(--space-md) var(--space-lg);
-  border-radius: 14px;
-  background: var(--night);
+  width: fit-content;
+  max-width: 100%;
+  margin-inline: auto;
+  padding: var(--space-md) var(--space-xl);
+  border-radius: 24px; /* a full pill on one line, still soft on two */
+  background: oklch(0.13 0 0 / 0.78);
+  -webkit-backdrop-filter: blur(20px) saturate(1.6);
+  backdrop-filter: blur(20px) saturate(1.6);
   color: var(--night-ink);
   font-size: var(--text-label);
   font-weight: 500;
   text-align: center;
-  box-shadow: 0 8px 28px oklch(0 0 0 / 0.25);
+  text-wrap: balance;
+  box-shadow: 0 8px 28px oklch(0 0 0 / 0.2);
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  .toast {
+    background: var(--night);
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
+}
+
+/* Stacking pages (lib/stack.jsx). Forward: the new page slides in from the right with a
+   shadow on its edge, the old one eases 25% left and dims under it. Back: the reverse,
+   the top page on top. Ease-out, no bounce (CLAUDE.md). */
+@media (prefers-reduced-motion: no-preference) {
+  ::view-transition-old(root),
+  ::view-transition-new(root) {
+    animation-duration: 0.42s;
+    animation-timing-function: cubic-bezier(0.32, 0.72, 0, 1);
+    animation-fill-mode: both;
+    mix-blend-mode: normal;
+  }
+
+  html[data-nav='forward']::view-transition-old(root) {
+    animation-name: stack-under;
+  }
+
+  html[data-nav='forward']::view-transition-new(root) {
+    animation-name: stack-in;
+    box-shadow: -10px 0 30px oklch(0 0 0 / 0.35);
+  }
+
+  html[data-nav='back']::view-transition-old(root) {
+    z-index: 1;
+    animation-name: stack-out;
+    box-shadow: -10px 0 30px oklch(0 0 0 / 0.35);
+  }
+
+  html[data-nav='back']::view-transition-new(root) {
+    animation-name: stack-reveal;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  ::view-transition-group(*),
+  ::view-transition-old(*),
+  ::view-transition-new(*) {
+    animation: none !important;
+  }
+}
+
+@keyframes stack-in {
+  from {
+    transform: translateX(100%);
+  }
+}
+
+@keyframes stack-under {
+  to {
+    transform: translateX(-25%);
+    filter: brightness(0.75);
+  }
+}
+
+@keyframes stack-out {
+  to {
+    transform: translateX(100%);
+  }
+}
+
+@keyframes stack-reveal {
+  from {
+    transform: translateX(-25%);
+    filter: brightness(0.75);
+  }
+}
+
+/* Loading spinner (components/Loading.jsx): a lime arc on a faint ring. Shows after
+   0.3 s, so a fast load doesn't flash it. */
+.spinner {
+  display: block;
+  width: var(--spinner-size, 36px);
+  height: var(--spinner-size, 36px);
+  margin-inline: auto;
+  border: 3px solid oklch(1 0 0 / 0.12);
+  border-top-color: var(--lime);
+  border-radius: 50%;
+  opacity: 0;
+  animation:
+    spinner-in 0.2s ease-out 0.3s forwards,
+    spinner-turn 0.8s linear infinite;
+}
+
+@keyframes spinner-in {
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes spinner-turn {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* Reduced motion: no spinning; the ring breathes slowly instead */
+@media (prefers-reduced-motion: reduce) {
+  .spinner {
+    border-color: var(--lime);
+    animation:
+      spinner-in 0.2s ease-out 0.3s forwards,
+      spinner-breathe 1.6s ease-in-out 0.5s infinite;
+  }
+
+  @keyframes spinner-breathe {
+    50% {
+      opacity: 0.4;
+    }
+  }
 }
 
 /* Full-screen states: loading, missing, offline */

@@ -1,5 +1,6 @@
 import { useEffect, useId, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
+import { useStackNavigate } from '../../lib/stack.jsx';
 import Amount from '../../components/Amount.jsx';
 import Icon from '../../components/Icon.jsx';
 import Sheet from '../../components/Sheet.jsx';
@@ -61,6 +62,7 @@ export function totals(draft) {
 /** New bill (PRD M2): photos in, AI reads, payer reviews and fixes, bill out. No blank form. */
 export default function NewBill() {
   const navigate = useNavigate();
+  const go = useStackNavigate();
   const [photos, setPhotos] = useState([]);
   const [phase, setPhase] = useState('photos');
   const [error, setError] = useState(null);
@@ -208,7 +210,7 @@ export default function NewBill() {
         photos: photoPaths,
       });
       await clearNewBill();
-      navigate(`/bills/${id}/share`, { replace: true });
+      go(`/bills/${id}/share`, { replace: true });
     } catch (err) {
       setCreating(false);
       showToast(err.code === 'offline' ? "You're offline. Try again." : "Couldn't create the bill. Check the details and try again.");
@@ -277,7 +279,7 @@ export default function NewBill() {
         onBack={() => {
           // Back from the photos is cancel: this bill is dropped.
           clearNewBill();
-          navigate('/');
+          go('/', { back: true });
         }}
         toast={toast}
       />

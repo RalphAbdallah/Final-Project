@@ -1,12 +1,14 @@
+import LoadingScreen from '../../components/Loading.jsx';
 import { useEffect, useId, useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { StackLink, useStackNavigate } from '../../lib/stack.jsx';
 import Icon from '../../components/Icon.jsx';
 import Sheet from '../../components/Sheet.jsx';
+import PasswordInput from '../../components/PasswordInput.jsx';
 import { useToast } from '../../components/Toast.jsx';
 import WalletLogo from '../../components/WalletLogo.jsx';
 import { api, cachedProfile } from '../../lib/api.js';
 import { hueFor, initials } from '../../lib/people.js';
-import { supabase } from '../../lib/supabase.js';
+import { checkPassword, supabase } from '../../lib/supabase.js';
 import { walletName } from '../../lib/wallets.js';
 import '../guest/guest.css';
 import '../payer/newbill.css';
@@ -16,7 +18,7 @@ import './profile.css';
 function authMessage(error) {
   const text = error?.message ?? '';
   if (/same/i.test(text)) return "That's already your password. Pick a new one.";
-  if (/weak|at least|characters/i.test(text)) return 'Use a password of at least 8 characters.';
+  if (/weak|at least|characters/i.test(text)) return 'New password must be at least 8 characters.';
   if (/registered|already/i.test(text)) return 'Another account already uses that email.';
   if (/invalid/i.test(text) && /email/i.test(text)) return "That email doesn't look right.";
   if (/reauth|recent/i.test(text)) return 'For your security, log out and back in, then try again.';
@@ -25,7 +27,7 @@ function authMessage(error) {
 
 /** The payer's account: who they are, how they get paid, their login, and leaving. */
 export default function Profile() {
-  const navigate = useNavigate();
+  const navigate = useStackNavigate();
   const [profile, setProfile] = useState(cachedProfile);
   const [failed, setFailed] = useState(false);
   const [leaving, setLeaving] = useState(false);
@@ -47,7 +49,7 @@ export default function Profile() {
     setLeaving(true);
     // Leave this page first: it requires a login, so signing out here would send it to
     // the login screen instead of the landing page.
-    navigate('/', { replace: true });
+    navigate('/', { replace: true, back: true });
     await supabase.auth.signOut();
   }
 
@@ -56,13 +58,13 @@ export default function Profile() {
       <main className="state on-night">
         <h1 className="state__title">Couldn't load your account</h1>
         <p className="state__text">Check your connection, then try again.</p>
-        <Link className="pill pill--night" to="/">
+        <StackLink back className="pill pill--night" to="/">
           Go home
-        </Link>
+        </StackLink>
       </main>
     );
   }
-  if (!profile) return <main className="state on-night" aria-busy="true" aria-label="Loading" />;
+  if (!profile) return <LoadingScreen />;
 
   const wallets = profile.payouts.map((p) => p.wallet);
   const close = () => setEditing(null);
@@ -71,9 +73,9 @@ export default function Profile() {
     <div className="screen profile">
       <header className="top on-night">
         <div className="top__bar">
-          <Link to="/" className="pill pill--night pill--icon" aria-label="Home">
+          <StackLink back to="/" className="pill pill--night pill--icon" aria-label="Home">
             <Icon name="chevronLeft" />
-          </Link>
+          </StackLink>
           <p className="wordmark">
             spl<span>IT</span>
           </p>
@@ -94,9 +96,9 @@ export default function Profile() {
             <h2 id="methods-title" className="surface__title">
               Payment methods
             </h2>
-            <Link className="text-button profile__edit" to="/get-paid">
+            <StackLink className="text-button profile__edit" to="/get-paid">
               Edit
-            </Link>
+            </StackLink>
           </div>
           <ul className="profile__list">
             {[...wallets, 'cash'].map((id) => (
@@ -175,7 +177,7 @@ export default function Profile() {
         open={editing === 'delete'}
         onClose={close}
         onDeleted={async () => {
-          navigate('/', { replace: true });
+          navigate('/', { replace: true, back: true });
           await supabase.auth.signOut();
         }}
       />
@@ -198,6 +200,18 @@ function FieldSheet({ open, title, description, label, type = 'text', initial = 
       setBusy(false);
     }
   }
+
+  const inputProps = {
+    id,
+    className: 'field-input',
+    value,
+    onChange: (e) => {
+      setValue(e.target.value);
+      setError(null);
+    },
+    autoComplete,
+    'aria-invalid': Boolean(error),
+  };
 
   async function submit() {
     setBusy(true);
@@ -222,18 +236,7 @@ function FieldSheet({ open, title, description, label, type = 'text', initial = 
         <label htmlFor={id} className="field__label">
           {label}
         </label>
-        <input
-          id={id}
-          className="field-input"
-          type={type}
-          value={value}
-          onChange={(e) => {
-            setValue(e.target.value);
-            setError(null);
-          }}
-          autoComplete={autoComplete}
-          aria-invalid={Boolean(error)}
-        />
+        <input {...inputProps} type={type} />
       </div>
       {error && (
         <p className="form-error profile__error" role="alert">
@@ -293,25 +296,93 @@ function EmailSheet({ open, current, onClose, onSaved }) {
   );
 }
 
+/**
+ * Current password, then the new one. The current one is checked first (checkPassword);
+ * if it's wrong, nothing changes.
+ */
 function PasswordSheet({ open, onClose, onSaved }) {
+  const ids = { current: useId(), next: useId() };
+  const [current, setCurrent] = useState('');
+  const [next, setNext] = useState('');
+  const [error, setError] = useState(null); // { field: 'current' | 'next' | null, message }
+  const [busy, setBusy] = useState(false);
+  const [wasOpen, setWasOpen] = useState(false);
+  if (open !== wasOpen) {
+    setWasOpen(open);
+    if (open) {
+      setCurrent('');
+      setNext('');
+      setError(null);
+      setBusy(false);
+    }
+  }
+
+  async function submit() {
+    if (next.length < 8) return setError({ field: 'next', message: 'New password must be at least 8 characters.' });
+    if (next === current) return setError({ field: 'next', message: "That's already your password. Pick a new one." });
+    setBusy(true);
+    setError(null);
+    try {
+      const { data } = await supabase.auth.getSession();
+      const email = data.session?.user?.email;
+      if (!email || !(await checkPassword(email, current))) {
+        setBusy(false);
+        return setError({ field: 'current', message: 'Incorrect password.' });
+      }
+      const { error: failed } = await supabase.auth.updateUser({ password: next });
+      if (failed) {
+        setBusy(false);
+        return setError({ field: 'next', message: authMessage(failed) });
+      }
+      onSaved();
+    } catch {
+      setBusy(false);
+      setError({ field: null, message: "Couldn't change your password. Check your connection and try again." });
+    }
+  }
+
+  const field = (key, setter) => ({
+    id: ids[key],
+    className: 'field-input',
+    value: key === 'current' ? current : next,
+    onChange: (e) => {
+      setter(e.target.value);
+      setError(null);
+    },
+    'aria-invalid': error?.field === key,
+  });
+
   return (
-    <FieldSheet
+    <Sheet
       open={open}
-      title="New password"
-      description="At least 8 characters."
-      label="New password"
-      type="password"
-      saveLabel="Change password"
-      autoComplete="new-password"
       onClose={onClose}
-      save={async (password) => {
-        if (password.length < 8) return 'Use a password of at least 8 characters.';
-        const { error } = await supabase.auth.updateUser({ password });
-        if (error) return authMessage(error);
-        onSaved();
-        return null;
-      }}
-    />
+      title="Change password"
+      footer={
+        <button type="button" className="pill pill--primary pill--block" onClick={submit} disabled={busy || !current || !next}>
+          {busy ? 'Checking…' : 'Change password'}
+        </button>
+      }
+    >
+      <div className="profile__fields">
+        <div className="field">
+          <label htmlFor={ids.current} className="field__label">
+            Current password
+          </label>
+          <PasswordInput {...field('current', setCurrent)} autoComplete="current-password" />
+        </div>
+        <div className="field">
+          <label htmlFor={ids.next} className="field__label">
+            New password
+          </label>
+          <PasswordInput {...field('next', setNext)} autoComplete="new-password" placeholder="At least 8 characters" />
+        </div>
+      </div>
+      {error && (
+        <p className="form-error profile__error" role="alert">
+          {error.message}
+        </p>
+      )}
+    </Sheet>
   );
 }
 

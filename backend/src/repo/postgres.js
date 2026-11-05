@@ -10,7 +10,7 @@ pg.types.setTypeParser(pg.types.builtins.NUMERIC, (value) => Number(value));
 pg.types.setTypeParser(pg.types.builtins.DATE, (value) => value);
 
 export function createPool(connectionString) {
-  return new pg.Pool({
+  const pool = new pg.Pool({
     connectionString,
     ssl: { rejectUnauthorized: false },
     max: 5,
@@ -19,6 +19,11 @@ export function createPool(connectionString) {
     idleTimeoutMillis: 5 * 60_000,
     keepAlive: true,
   });
+  // An idle connection can drop (the laptop changes Wi-Fi, Supabase closes it). pg then
+  // emits 'error' on the pool, and with no listener that crashes the whole API. The
+  // broken connection is already discarded; the next query opens a new one.
+  pool.on('error', (err) => console.warn(`Database connection dropped (${err.code ?? err.message}); reconnecting on next use.`));
+  return pool;
 }
 
 const toBill = (r) =>

@@ -1,3 +1,4 @@
+import LoadingScreen from '../components/Loading.jsx';
 import { createContext, useContext, useEffect, useState } from 'react';
 import { Navigate, useLocation } from 'react-router-dom';
 import { cachedProfile, clearPayerCache, setTokenSource } from './api.js';
@@ -37,7 +38,7 @@ export const useAuth = () => useContext(AuthContext);
 export function RequireAuth({ children }) {
   const { session } = useAuth();
   const location = useLocation();
-  if (session === undefined) return <main className="state on-night" aria-busy="true" aria-label="Loading" />;
+  if (session === undefined) return <LoadingScreen />;
   if (!session) return <Navigate to="/login" replace state={{ from: location.pathname }} />;
   return children;
 }

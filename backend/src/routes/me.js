@@ -5,10 +5,10 @@ import { billSummary } from '../views.js';
 import { billRoutes } from './bills.js';
 
 /** The logged-in payer: profile, get-paid setup (PRD M1), and their bills (M2). */
-export function meRoutes({ repo, verifyToken, readReceipt, storage, aiLimits, deleteAuthUser }) {
+export function meRoutes({ repo, verifyToken, readReceipt, storage, aiLimits, deleteAuthUser, limit }) {
   const router = Router();
   router.use(requirePayer({ verifyToken, repo }));
-  router.use(billRoutes({ repo, readReceipt, storage, aiLimits }));
+  router.use(billRoutes({ repo, readReceipt, storage, aiLimits, limit }));
 
   // The profile doubles as the dashboard (PRD M10): each bill with collected and still owed.
   async function sendProfile(req, res) {

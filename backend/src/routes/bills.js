@@ -4,11 +4,13 @@ import multer from 'multer';
 import { buildDraft } from '../receipts/draft.js';
 import { aiLimitsFromEnv, checkAiLimits } from '../receipts/limits.js';
 import { applyClaim } from '../claims.js';
+import { createLimiters } from '../rateLimits.js';
 import { payerBillView, splitFor } from '../views.js';
 
 const MAX_PHOTOS = 6;
 const PHOTO_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp']);
 const MAX_MONEY = 10_000_000_000;
+const MAX_TIP = 100_000_000; // same cap as a guest's tip (routes/share.js)
 
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -64,7 +66,7 @@ export function validateBill(body, userId) {
 }
 
 /** Payer bill routes, mounted under /api/me (already authenticated). */
-export function billRoutes({ repo, readReceipt, storage, aiLimits = aiLimitsFromEnv() }) {
+export function billRoutes({ repo, readReceipt, storage, aiLimits = aiLimitsFromEnv(), limit = createLimiters(null) }) {
   const router = Router();
   const reading = new Set();
 
@@ -268,8 +270,9 @@ export function billRoutes({ repo, readReceipt, storage, aiLimits = aiLimitsFrom
     if (result.error) return res.status(result.status).json({ error: result.error });
     await sendBill(res, own.bill, result.state);
   }
-  router.put('/bills/:id/claims/:itemId', (req, res) => payerClaim(req, res, { units: req.body?.units }));
-  router.delete('/bills/:id/claims/:itemId', (req, res) => payerClaim(req, res, { remove: true }));
+  // Rate limited like a guest's claims (rateLimits.js).
+  router.put('/bills/:id/claims/:itemId', limit.payerClaim, (req, res) => payerClaim(req, res, { units: req.body?.units }));
+  router.delete('/bills/:id/claims/:itemId', limit.payerClaim, (req, res) => payerClaim(req, res, { remove: true }));
 
   // 8. Card paid (PRD M11, Q16): locks tips at what was charged. Can be undone.
   router.put('/bills/:id/card-paid', async (req, res) => {
@@ -279,6 +282,19 @@ export function billRoutes({ repo, readReceipt, storage, aiLimits = aiLimitsFrom
     const at = req.body.paid ? new Date() : null;
     await repo.setCardPaid(own.bill.id, at);
     await sendBill(res, { ...own.bill, cardPaidAt: at }, own.state);
+  });
+
+  // 9. The payer's own tip (PRD M11): counts in the tips total, locked once the card is paid.
+  router.put('/bills/:id/tip', async (req, res) => {
+    const own = await ownBill(req, res);
+    if (!own) return;
+    const tip = req.body?.tip;
+    if (!Number.isInteger(tip) || tip < 0 || tip > MAX_TIP) return res.status(400).json({ error: 'invalid_tip' });
+    if (own.bill.cardPaidAt) return res.status(409).json({ error: 'tip_locked' });
+    const payerRow = own.state.members.find((m) => m.isPayer);
+    await repo.updateMember(payerRow.id, { tip });
+    const members = own.state.members.map((m) => (m.id === payerRow.id ? { ...m, tip } : m));
+    await sendBill(res, own.bill, { ...own.state, members });
   });
 
   return router;

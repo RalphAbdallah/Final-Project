@@ -33,9 +33,10 @@
   overflow-wrap: anywhere;
 }
 
-/* Lime text on white: a team choice (2026-11-03), against DESIGN.md's lime-deep rule. Low contrast. */
+/* Dark green (lime-deep), the one lime that reads as text on white (6.5:1). Was plain
+   lime (team choice 2026-11-03), switched to dark green 2026-11-05. */
 .profile__edit {
-  color: var(--lime);
+  color: var(--lime-deep);
   text-decoration: none;
 }
 
@@ -102,8 +103,10 @@
   color: var(--ink-muted);
 }
 
+/* Tight to the field above and the button below (team choice, 2026-11-05) */
 .profile__error {
-  margin-top: var(--space-md);
+  margin-top: var(--space-sm);
+  margin-bottom: calc(var(--space-md) * -1); /* the sheet's own 24 px gap to the button → 12 */
 }
 
 /* Delete at the end of the sheet, light red, like Delete bill */
@@ -119,4 +122,10 @@
 
 .profile__logout {
   min-height: 52px;
+}
+
+/* Change password: two fields stacked */
+.profile__fields {
+  display: grid;
+  gap: var(--space-lg);
 }

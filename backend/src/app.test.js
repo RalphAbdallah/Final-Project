@@ -215,6 +215,21 @@ describe('payer bill screen and dashboard', () => {
     expect((await request(app).patch(`${bill}/me`).set('X-Guest-Token', token).send({ tip: 100 })).body.error).toBe('tip_locked');
   });
 
+  it('lets the payer add their own tip, counted in the card total, until the card is paid', async () => {
+    const { id } = await sampleBill();
+    const before = (await asPayer(request(app).get(`/api/me/bills/${id}`))).body.bill;
+    const res = await asPayer(request(app).put(`/api/me/bills/${id}/tip`)).send({ tip: 500 });
+    expect(res.status).toBe(200);
+    expect(res.body.bill.tips).toBe(before.tips + 500);
+    expect(res.body.bill.card).toBe(before.card + 500);
+    expect(res.body.members.find((m) => m.isPayer).tip).toBe(500);
+    expect((await asPayer(request(app).put(`/api/me/bills/${id}/tip`)).send({ tip: -1 })).body.error).toBe('invalid_tip');
+    await asPayer(request(app).put(`/api/me/bills/${id}/card-paid`)).send({ paid: true });
+    expect((await asPayer(request(app).put(`/api/me/bills/${id}/tip`)).send({ tip: 100 })).body.error).toBe('tip_locked');
+    const other = await request(app).put(`/api/me/bills/${id}/tip`).set('Authorization', 'Bearer payer-2-token').send({ tip: 100 });
+    expect(other.status).toBe(404);
+  });
+
   it('deletes a bill with everything on it, and only your own', async () => {
     const { id } = await sampleBill();
     const other = await request(app).delete(`/api/me/bills/${id}`).set('Authorization', 'Bearer payer-2-token');
@@ -464,5 +479,51 @@ describe('get-paid setup', () => {
     await asPayer(request(app).put('/api/me/payouts/whish')).send({ payUrl: 'https://whish.money/x' });
     const res = await asPayer(request(app).delete('/api/me/payouts/whish'));
     expect(res.body.payouts).toEqual([]);
+  });
+});
+
+describe('rate limits on joining and claiming (PRD §11)', () => {
+  const tight = {
+    joinPerBill: { limit: 3, windowMs: 60_000 },
+    joinPerAddress: { limit: 100, windowMs: 60_000 },
+    claimPerPerson: { limit: 5, windowMs: 60_000 },
+    claimPerAddress: { limit: 100, windowMs: 60_000 },
+  };
+
+  beforeEach(async () => {
+    app = createApp({ repo: createMemoryRepo(), verifyToken, readReceipt: fakeReader, storage: fakeStorage, rateLimits: tight });
+    const res = await asPayer(request(app).post('/api/me/sample-bill'));
+    bill = `/api/share/${res.body.shareToken}`;
+  });
+
+  it('stops joins past the per-bill limit, with how long to wait', async () => {
+    for (const name of ['A', 'B', 'C']) expect((await join(name)).res.status).toBe(201);
+    const { res } = await join('D');
+    expect(res.status).toBe(429);
+    expect(res.body.error).toBe('too_many_requests');
+    expect(res.body.retryAfter).toBeGreaterThan(0);
+    expect(Number(res.headers['retry-after'])).toBe(res.body.retryAfter);
+  });
+
+  it('counts claims per guest, so one fast tapper does not block the others', async () => {
+    const maya = await join('Maya');
+    const nour = await join('Nour');
+    const fries = maya.view.items.find((i) => i.name === 'Fries');
+    const tap = (token, units) => request(app).put(`${bill}/claims/${fries.id}`).set('X-Guest-Token', token).send({ units });
+    for (let i = 0; i < 5; i += 1) expect((await tap(maya.token, 1)).status).toBe(200);
+    expect((await tap(maya.token, 1)).status).toBe(429);
+    expect((await request(app).delete(`${bill}/claims/${fries.id}`).set('X-Guest-Token', maya.token)).status).toBe(429);
+    // Nour isn't held back by Maya's taps (unclaiming nothing is still a counted claim request).
+    expect((await request(app).delete(`${bill}/claims/${fries.id}`).set('X-Guest-Token', nour.token)).status).toBe(200);
+  });
+
+  it('limits the payer\'s own claims the same way', async () => {
+    const { body } = await asPayer(request(app).get('/api/me'));
+    const id = body.bills[0].id;
+    const view = (await asPayer(request(app).get(`/api/me/bills/${id}`))).body;
+    const pizza = view.items.find((i) => i.name === 'Pizza Margherita');
+    const claim = () => asPayer(request(app).put(`/api/me/bills/${id}/claims/${pizza.id}`)).send({ units: 1 });
+    for (let i = 0; i < 5; i += 1) expect((await claim()).status).toBe(200);
+    expect((await claim()).status).toBe(429);
   });
 });

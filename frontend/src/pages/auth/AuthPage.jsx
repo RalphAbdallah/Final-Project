@@ -1,5 +1,7 @@
 import { useId, useState } from 'react';
-import { Link, Navigate, useLocation, useNavigate } from 'react-router-dom';
+import { Link, Navigate, useLocation } from 'react-router-dom';
+import { StackLink, useStackNavigate } from '../../lib/stack.jsx';
+import PasswordInput from '../../components/PasswordInput.jsx';
 import { authErrorMessage, useAuth } from '../../lib/auth.jsx';
 import { supabase } from '../../lib/supabase.js';
 import './auth.css';
@@ -10,7 +12,7 @@ const MIN_PASSWORD = 8;
 export default function AuthPage({ mode }) {
   const isSignup = mode === 'signup';
   const { session } = useAuth();
-  const navigate = useNavigate();
+  const navigate = useStackNavigate();
   const location = useLocation();
   const [fields, setFields] = useState({ name: '', email: '', password: '' });
   const [error, setError] = useState(null);
@@ -58,9 +60,9 @@ export default function AuthPage({ mode }) {
           We sent a link to <strong>{fields.email.trim()}</strong>. Open it on this device to finish creating your
           account.
         </p>
-        <Link className="pill pill--night" to="/login">
+        <StackLink back className="pill pill--night" to="/login">
           Back to log in
-        </Link>
+        </StackLink>
       </main>
     );
   }
@@ -69,9 +71,9 @@ export default function AuthPage({ mode }) {
     <div className="screen auth">
       <header className="top on-night">
         <div className="top__bar">
-          <Link to="/" className="wordmark" aria-label="splIT home">
+          <StackLink back to="/" className="wordmark" aria-label="splIT home">
             spl<span>IT</span>
-          </Link>
+          </StackLink>
         </div>
         <div className="auth__heading">
           <h1 className="auth__title">{isSignup ? 'Sign up' : 'Log in'}</h1>
@@ -116,10 +118,8 @@ export default function AuthPage({ mode }) {
             <label htmlFor={ids.password} className="field__label">
               Password
             </label>
-            <input
+            <PasswordInput
               id={ids.password}
-              className="field-input"
-              type="password"
               value={fields.password}
               onChange={set('password')}
               autoComplete={isSignup ? 'new-password' : 'current-password'}

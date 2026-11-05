@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
-import { Link, useNavigate, useParams } from 'react-router-dom';
+import { useParams } from 'react-router-dom';
+import { StackLink, useStackNavigate } from '../../lib/stack.jsx';
 import Amount from '../../components/Amount.jsx';
 import Icon from '../../components/Icon.jsx';
 import Sheet from '../../components/Sheet.jsx';
@@ -34,7 +35,7 @@ function draftFrom(view) {
  */
 export default function EditBill() {
   const { id } = useParams();
-  const navigate = useNavigate();
+  const navigate = useStackNavigate();
   // Opens filled in from the last copy of the bill; the fresh one replaces it only until
   // the payer starts editing (never over their changes). The server re-checks on save.
   const [draft, setDraft] = useState(() => draftFrom(cachedBill(id)));
@@ -63,9 +64,9 @@ export default function EditBill() {
       <main className="state on-night">
         <h1 className="state__title">Couldn't load the bill</h1>
         <p className="state__text">Check your connection, then try again.</p>
-        <Link className="pill pill--night" to={`/bills/${id}`}>
+        <StackLink back className="pill pill--night" to={`/bills/${id}`}>
           Back to the bill
-        </Link>
+        </StackLink>
       </main>
     );
   }
@@ -84,7 +85,7 @@ export default function EditBill() {
     setDeleting(true);
     try {
       await api.deleteBill(id);
-      navigate('/', { replace: true });
+      navigate('/', { replace: true, back: true });
     } catch (err) {
       setDeleting(false);
       setConfirmDelete(false);
@@ -104,7 +105,7 @@ export default function EditBill() {
         service: draft.service,
         items: draft.items.map(({ id: itemId, name, price, quantity }) => ({ id: itemId, name: name.trim(), price, quantity })),
       });
-      navigate(`/bills/${id}`, { replace: true });
+      navigate(`/bills/${id}`, { replace: true, back: true });
     } catch (err) {
       setSaving(false);
       showToast(
@@ -121,9 +122,9 @@ export default function EditBill() {
     <div className="screen newbill">
       <header className="top on-night">
         <div className="top__bar">
-          <Link to={`/bills/${id}`} className="pill pill--night pill--icon" aria-label="Back to the bill">
+          <StackLink back to={`/bills/${id}`} className="pill pill--night pill--icon" aria-label="Back to the bill">
             <Icon name="chevronLeft" />
-          </Link>
+          </StackLink>
           <p className="newbill__step">Edit bill</p>
           <span className="newbill__spacer" />
         </div>
@@ -200,7 +201,7 @@ export default function EditBill() {
         </section>
 
         <button type="button" className="pill pill--day pill--block danger-text edit-bill__delete" onClick={() => setConfirmDelete(true)}>
-          Delete bill
+          Delete
         </button>
       </main>
 
@@ -240,7 +241,7 @@ export default function EditBill() {
         footer={
           <>
             <button type="button" className="pill pill--danger pill--block" onClick={deleteBill} disabled={deleting}>
-              {deleting ? 'Deleting…' : 'Delete bill'}
+              {deleting ? 'Deleting…' : 'Delete'}
             </button>
             <button type="button" className="pill pill--day pill--block" onClick={() => setConfirmDelete(false)} disabled={deleting}>
               Keep the bill
@@ -267,9 +268,9 @@ function LoadingEdit({ id, summary }) {
     <div className="screen newbill" aria-busy="true" aria-label="Loading the bill">
       <header className="top on-night">
         <div className="top__bar">
-          <Link to={`/bills/${id}`} className="pill pill--night pill--icon" aria-label="Back to the bill">
+          <StackLink back to={`/bills/${id}`} className="pill pill--night pill--icon" aria-label="Back to the bill">
             <Icon name="chevronLeft" />
-          </Link>
+          </StackLink>
           <p className="newbill__step">Edit bill</p>
           <span className="newbill__spacer" />
         </div>

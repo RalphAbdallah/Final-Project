@@ -177,10 +177,20 @@
   color: var(--status-unpaid-ink);
 }
 
+/* Guest page: what nobody has claimed yet, in red, as "Unpaid" (team choice) */
+.breakdown .breakdown__unclaimed.is-danger {
+  color: var(--danger);
+}
+
 .breakdown__unclaimed dt {
   display: flex;
   align-items: center;
   gap: var(--space-sm);
+}
+
+/* A light hairline between the list and the Done / Pay bar (guest page only, team choice) */
+.guest .dock:not(.dock--empty) {
+  border-top: 1px solid var(--day-line);
 }
 
 /* Dock: paid state */
@@ -225,17 +235,15 @@
   color: var(--ink-muted);
 }
 
-/* Tip sheet */
+/* Tip sheet: the amount field, then two quick round-ups under it */
 .tip-options {
   display: grid;
   grid-template-columns: repeat(2, 1fr);
   gap: var(--space-sm);
 }
 
-.tip-options__legend {
-  margin-bottom: var(--space-md);
-  font-size: var(--text-label);
-  font-weight: 600;
+.tip-quick {
+  margin-top: var(--space-md);
 }
 
 .tip-option {
@@ -281,18 +289,31 @@
   font-weight: 600;
 }
 
-.tip-other {
-  margin-top: var(--space-lg);
+
+/* Tip and pay share one sheet; its content height animates between the two steps.
+   Full bleed (method rows run edge to edge) with room for focus rings, so the clip
+   only ever trims what's growing in. */
+.pay-flow {
+  overflow: hidden;
+  margin: -4px calc(var(--gutter) * -1) 0;
 }
 
-.tip-other__label {
-  display: block;
-  margin-bottom: var(--space-sm);
-  font-size: var(--text-label);
-  font-weight: 600;
+.pay-flow__inner {
+  padding: 4px var(--gutter) env(safe-area-inset-bottom);
 }
 
-/* Pay sheet */
+/* The tip step on its own (the payer's tip) */
+.pay-flow__alone {
+  padding-bottom: env(safe-area-inset-bottom);
+}
+
+.pay-flow__actions {
+  display: grid;
+  gap: var(--space-sm);
+  margin-top: var(--space-xl);
+}
+
+/* Pay step */
 .pay-amount {
   --amount-muted: var(--ink-muted);
   display: flex;
@@ -304,12 +325,6 @@
 
 .pay-amount__value {
   font-size: 2.75rem;
-}
-
-.pay-breakdown {
-  margin-top: var(--space-sm);
-  font-size: var(--text-caption);
-  color: var(--ink-muted);
 }
 
 .methods {
