@@ -23,7 +23,32 @@ export function createPool(connectionString) {
   // emits 'error' on the pool, and with no listener that crashes the whole API. The
   // broken connection is already discarded; the next query opens a new one.
   pool.on('error', (err) => console.warn(`Database connection dropped (${err.code ?? err.message}); reconnecting on next use.`));
+
+  // A kept-open connection can also be dead when a query picks it up (the network
+  // changed, Supabase closed it): the query fails with ECONNRESET and the user saw
+  // "Couldn't load your account". Reads are tried once more, on a fresh connection.
+  // Writes aren't: if the first try did reach the database, a second would repeat it.
+  const query = pool.query.bind(pool);
+  pool.query = async (text, params) => {
+    try {
+      return await query(text, params);
+    } catch (err) {
+      if (!isDropped(err) || !isRead(text)) throw err;
+      console.warn(`Database connection dropped mid-query (${err.code ?? err.message}); trying the read again.`);
+      return query(text, params);
+    }
+  };
   return pool;
+}
+
+const DROPPED_CODES = new Set(['ECONNRESET', 'EPIPE', 'ETIMEDOUT', 'ECONNREFUSED', 'ENOTFOUND', '57P01']);
+function isDropped(err) {
+  return DROPPED_CODES.has(err.code) || /connection terminated|connection timeout|server closed the connection/i.test(err.message ?? '');
+}
+/** A plain read: select or with, and not claim_units() (a select that writes, migration 004). */
+function isRead(text) {
+  const sql = typeof text === 'string' ? text : (text?.text ?? '');
+  return /^\s*(select|with)\b/i.test(sql) && !/claim_units/i.test(sql) && !/\b(insert|update|delete)\b/i.test(sql);
 }
 
 const toBill = (r) =>

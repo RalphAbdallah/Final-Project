@@ -13,6 +13,22 @@ function setDirection(back) {
   document.documentElement.dataset.nav = back ? 'back' : 'forward';
 }
 
+/**
+ * Back and forward (the browser's button, the phone's swipe). React Router replays a
+ * page's view transition when going back to it, with whatever direction was set last,
+ * so after an iPhone swipe-back (which Safari has already animated) the page slid in
+ * again from the right. Now: if the browser animated it itself (`hasUAVisualTransition`;
+ * a touch screen when the browser can't say), no second animation; otherwise a back slide.
+ * Registered when this module loads, before the router's own listener (main.jsx).
+ */
+if (typeof window !== 'undefined') {
+  window.addEventListener('popstate', (event) => {
+    const animatedByBrowser =
+      'hasUAVisualTransition' in event ? event.hasUAVisualTransition : window.matchMedia('(pointer: coarse)').matches;
+    document.documentElement.dataset.nav = animatedByBrowser ? 'none' : 'back';
+  });
+}
+
 /** A <Link> that stacks forward, or unstacks with `back`. */
 export function StackLink({ back = false, onClick, ...props }) {
   return (

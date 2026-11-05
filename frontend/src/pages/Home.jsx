@@ -4,6 +4,7 @@ import { StackLink, useStackNavigate } from '../lib/stack.jsx';
 import Icon from '../components/Icon.jsx';
 import { api, cachedProfile } from '../lib/api.js';
 import { useAuth } from '../lib/auth.jsx';
+import { supabase } from '../lib/supabase.js';
 import { formatDate } from '../lib/dates.js';
 import { formatMoney } from '../lib/money.js';
 import './Home.css';
@@ -96,9 +97,15 @@ function PayerHome() {
       <main className="state on-night">
         <h1 className="state__title">Couldn't load your account</h1>
         <p className="state__text">Check your connection, then try again.</p>
-        <button type="button" className="pill pill--night" onClick={() => window.location.reload()}>
-          Try again
-        </button>
+        <div className="state__actions">
+          <button type="button" className="pill pill--primary pill--block" onClick={() => window.location.reload()}>
+            Try again
+          </button>
+          {/* A way out, so nobody is stuck here: back to the start, logged out. */}
+          <button type="button" className="pill pill--night pill--block" onClick={() => supabase.auth.signOut()}>
+            Log out
+          </button>
+        </div>
       </main>
     );
   }

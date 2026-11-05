@@ -7,6 +7,8 @@ import './styles/tokens.css';
 import './styles/base.css';
 import './styles/layout.css';
 import './components/components.css';
+// Before the router is created: its back/forward listener must run after this one.
+import './lib/stack.jsx';
 
 // Each page loads on its own. Guests opening a bill link never download the
 // payer screens, the Supabase client or the QR reader.

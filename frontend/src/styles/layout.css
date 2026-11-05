@@ -185,6 +185,13 @@
   }
 }
 
+/* Back after the browser already animated it (iPhone swipe-back): no second animation */
+html[data-nav='none']::view-transition-group(*),
+html[data-nav='none']::view-transition-old(*),
+html[data-nav='none']::view-transition-new(*) {
+  animation: none !important;
+}
+
 @media (prefers-reduced-motion: reduce) {
   ::view-transition-group(*),
   ::view-transition-old(*),
@@ -287,6 +294,13 @@
 .state__text {
   color: var(--night-muted);
   text-wrap: pretty;
+}
+
+.state__actions {
+  display: grid;
+  gap: var(--space-sm);
+  width: min(100%, 20rem);
+  margin: var(--space-sm) auto 0;
 }
 
 /* Skeleton blocks for loading */
