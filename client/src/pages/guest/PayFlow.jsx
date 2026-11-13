@@ -1,39 +1,33 @@
-import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
-import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import Amount from '../../components/Amount.jsx';
 import Icon from '../../components/Icon.jsx';
 import Sheet from '../../components/Sheet.jsx';
 import WalletLogo from '../../components/WalletLogo.jsx';
-import { copyText } from '../../lib/clipboard.js';
-import { formatMoney, parseMoney, plainAmount, roundUpTargets } from '../../lib/money.js';
-import { walletName } from '../../lib/wallets.js';
-
-// Quick out, slightly slower in: the step change reads as instant.
-const FADE_IN = { duration: 0.16, ease: [0.22, 1, 0.36, 1] };
-const FADE_OUT = { duration: 0.07, ease: 'easeOut' };
-const GROW = { duration: 0.34, ease: [0.16, 1, 0.3, 1] };
+import { copyText } from '../../utils/clipboard.js';
+import { formatMoney, parseMoney, plainAmount, roundUpTargets } from '../../utils/money.js';
+import { walletName } from '../../utils/wallets.js';
 
 /**
  * After Done: the tip (PRD M11), then paying the payer (M8), in one sheet. Going from
- * the tip to paying changes what's inside; the sheet stays up. `step` is 'tip', 'pay'
- * or null (closed).
+ * the tip to paying changes what's inside (a quick fade); the sheet stays up.
+ * `step` is 'tip', 'pay' or null (closed).
  */
 export default function PayFlow({ step, onClose, me, payerName, currency, cardPaid, onSaveTip, onChooseMethod }) {
   // Keep the last step on screen while the sheet slides away.
   const [shown, setShown] = useState(step);
-  if (step && step !== shown) setShown(step);
-  const current = step ?? shown;
+  useEffect(() => {
+    if (step) setShown(step);
+  }, [step]);
+  const current = step || shown;
 
   const tip = useTip({ open: step === 'tip', total: me.total, currentTip: me.tip, currency, onSaveTip });
 
   return (
     <Sheet open={Boolean(step)} onClose={onClose} title={current === 'tip' ? 'Tip' : `Pay ${payerName}`}>
-      <AutoHeight>
-        <AnimatePresence mode="wait" initial={false}>
-          <motion.div key={current} initial={{ opacity: 0 }}
-            animate={{ opacity: 1, transition: FADE_IN }}
-            exit={{ opacity: 0, transition: FADE_OUT }}
-          >
+      <div className="pay-flow">
+        <div className="pay-flow__inner">
+          {/* A new key for each step replays the fade-in (guest.css) */}
+          <div key={current} className="pay-flow__step">
             {current === 'tip' && !cardPaid ? (
               <>
                 {tip.body}
@@ -42,9 +36,9 @@ export default function PayFlow({ step, onClose, me, payerName, currency, cardPa
             ) : (
               <PayStep me={me} payerName={payerName} currency={currency} onChooseMethod={onChooseMethod} />
             )}
-          </motion.div>
-        </AnimatePresence>
-      </AutoHeight>
+          </div>
+        </div>
+      </div>
     </Sheet>
   );
 }
@@ -63,47 +57,20 @@ export function TipSheet({ open, onClose, total, currentTip, currency, onSaveTip
 }
 
 /**
- * Grows or shrinks with its content (ease-out, no bounce), so the sheet's top edge
- * glides when the tip makes way for the taller pay step instead of jumping.
- */
-function AutoHeight({ children }) {
-  const inner = useRef(null);
-  const [height, setHeight] = useState('auto');
-  const reduce = useReducedMotion();
-
-  useLayoutEffect(() => {
-    const el = inner.current;
-    const observer = new ResizeObserver(() => setHeight(el.offsetHeight));
-    observer.observe(el);
-    return () => observer.disconnect();
-  }, []);
-
-  return (
-    <motion.div className="pay-flow" initial={false} animate={{ height }} transition={reduce ? { duration: 0 } : GROW}>
-      <div ref={inner} className="pay-flow__inner">
-        {children}
-      </div>
-    </motion.div>
-  );
-}
-
-/**
  * The tip step: the person types how much they want, or taps one of the two smallest
  * round-ups of their share (a $35 share: $36 or $40), which fills the field.
+ * A custom hook (Session 20): it returns the step's body and buttons.
  */
 function useTip({ open, total, currentTip, currency, onSaveTip }) {
-  const quick = useMemo(() => roundUpTargets(total, currency).slice(0, 2), [total, currency]);
+  const quick = roundUpTargets(total, currency).slice(0, 2);
   const [text, setText] = useState('');
   const [saving, setSaving] = useState(false);
-  const [wasOpen, setWasOpen] = useState(open);
-  const fieldId = useId();
   const money = (minor) => formatMoney(minor, currency);
 
   // Start fresh each time the step opens, keeping a tip they already set.
-  if (open !== wasOpen) {
-    setWasOpen(open);
+  useEffect(() => {
     if (open) setText(currentTip > 0 ? plainAmount(currentTip, currency) : '');
-  }
+  }, [open, currentTip, currency]);
 
   const tip = text.trim() === '' ? null : parseMoney(text, currency);
   const invalid = text.trim() !== '' && tip === null;
@@ -128,13 +95,13 @@ function useTip({ open, total, currentTip, currency, onSaveTip }) {
 
   const body = (
     <>
-      <label htmlFor={fieldId} className="visually-hidden">
+      <label htmlFor="tip-amount" className="visually-hidden">
         Tip amount
       </label>
       <div className="money-input">
         <span aria-hidden="true">{currency === 'USD' ? '$' : 'LBP'}</span>
         <input
-          id={fieldId}
+          id="tip-amount"
           className="num"
           inputMode={currency === 'USD' ? 'decimal' : 'numeric'}
           value={text}
@@ -172,21 +139,23 @@ function useTip({ open, total, currentTip, currency, onSaveTip }) {
  * link can carry the amount, so it is shown large and copied.
  */
 function PayStep({ me, payerName, currency, onChooseMethod }) {
+  // When the amount was last copied (a time), or false. "Copied" shows for 2.4 s.
   const [copied, setCopied] = useState(false);
-  const timer = useRef(null);
   const money = (minor) => formatMoney(minor, currency);
   // Cash first, and picked until they choose a wallet.
   const methods = ['cash', ...me.payouts.map((p) => p.wallet)];
   const selected = methods.includes(me.method) ? me.method : 'cash';
   const payout = me.payouts.find((p) => p.wallet === selected);
 
-  useEffect(() => () => clearTimeout(timer.current), []);
+  useEffect(() => {
+    if (!copied) return;
+    const timer = setTimeout(() => setCopied(false), 2400);
+    return () => clearTimeout(timer);
+  }, [copied]);
 
   async function copyAmount() {
     const ok = await copyText(plainAmount(me.due, currency));
-    setCopied(ok);
-    clearTimeout(timer.current);
-    if (ok) timer.current = setTimeout(() => setCopied(false), 2400);
+    setCopied(ok ? Date.now() : false);
   }
 
   return (

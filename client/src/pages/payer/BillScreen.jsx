@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import Amount from '../../components/Amount.jsx';
 import Icon from '../../components/Icon.jsx';
@@ -6,19 +6,18 @@ import ItemRow, { myMax } from '../../components/ItemRow.jsx';
 import Sheet from '../../components/Sheet.jsx';
 import StatusChip from '../../components/StatusChip.jsx';
 import { useToast } from '../../components/Toast.jsx';
-import { api, cachedBill, cachedProfile } from '../../lib/api.js';
-import { formatDate } from '../../lib/dates.js';
-import { extrasLabel, formatMoney } from '../../lib/money.js';
-import { hueFor, initials } from '../../lib/people.js';
-import { previewClaim } from '../../lib/preview.js';
-import { walletName } from '../../lib/wallets.js';
+import { api, cachedBill, cachedProfile } from '../../api/client.js';
+import { formatDate } from '../../utils/dates.js';
+import { extrasLabel, formatMoney } from '../../utils/money.js';
+import { hueFor, initials } from '../../utils/people.js';
+import { previewClaim } from '../../utils/preview.js';
+import { walletName } from '../../utils/wallets.js';
 import { TipSheet } from '../guest/PayFlow.jsx';
 import '../guest/guest.css';
 import './newbill.css';
 import './bill.css';
 
 const POLL_MS = 5000;
-const PHOTO_LINK_MS = 5 * 60 * 1000;
 
 const ERRORS = {
   not_enough_left: 'Someone just claimed that one.',
@@ -33,46 +32,47 @@ const ERRORS = {
  */
 export default function BillScreen() {
   const { id } = useParams();
-  // Opens on the last copy of this bill (lib/api.js cache), refreshed right behind it.
+  // Opens on the last copy of this bill (api/client.js cache), refreshed right behind it.
   const [view, setView] = useState(() => cachedBill(id));
   const [phase, setPhase] = useState(() => (cachedBill(id) ? 'ready' : 'loading'));
   const [openMember, setOpenMember] = useState(null);
   const [viewing, setViewing] = useState(null);
   const [tipOpen, setTipOpen] = useState(false);
   const [toast, showToast] = useToast();
-  const latest = useRef(0);
-  const inflight = useRef(0);
-  const photoLinks = useRef(new Map());
+  // Request bookkeeping that shouldn't re-render: useState keeps this same object between
+  // renders. `latest` numbers each request, so only the newest answer is shown; `inflight`
+  // counts saves still running, so the refresh waits for them.
+  const [requests] = useState({ latest: 0, inflight: 0 });
+  // The receipt photos, as data URLs. Loaded once (they're big), not on every refresh.
+  const [photos, setPhotos] = useState([]);
+  const photoIds = view ? view.photos.join(',') : '';
 
-  // Every answer carries freshly signed photo links (new token each time), which made the
-  // images download and flash again on each refresh. Keep the link already shown for the
-  // same photo while it's under 5 minutes old (links last 10, backend/src/storage.js).
-  const stablePhotos = useCallback((next) => {
-    if (!next?.photos) return next;
-    const now = Date.now();
-    const photos = next.photos.map((url) => {
-      const path = url.split('?')[0];
-      const kept = photoLinks.current.get(path);
-      if (kept && now - kept.at < PHOTO_LINK_MS) return kept.url;
-      photoLinks.current.set(path, { url, at: now });
-      return url;
-    });
-    return { ...next, photos };
-  }, []);
+  useEffect(() => {
+    if (!photoIds) return;
+    let active = true;
+    api
+      .billPhotos(id)
+      .then((list) => active && setPhotos(list.map((p) => p.src)))
+      .catch(() => {}); // the bill still works without its photos
+    return () => {
+      active = false;
+    };
+  }, [id, photoIds]);
 
   const load = useCallback(async () => {
-    const call = ++latest.current;
+    requests.latest += 1;
+    const call = requests.latest;
     try {
-      const next = stablePhotos(await api.payerBill(id));
-      if (call !== latest.current) return;
+      const next = await api.payerBill(id);
+      if (call !== requests.latest) return;
       setView(next);
       setPhase('ready');
     } catch (err) {
-      if (call !== latest.current) return;
+      if (call !== requests.latest) return;
       if (err.status === 404) setPhase('missing');
       else setPhase((p) => (p === 'ready' ? p : 'error'));
     }
-  }, [id, stablePhotos]);
+  }, [id, requests]);
 
   // Fetch the edit and share screens' code now, so Edit and Share don't open on a wait.
   useEffect(() => {
@@ -84,30 +84,31 @@ export default function BillScreen() {
   useEffect(() => {
     load();
     const timer = setInterval(() => {
-      if (document.visibilityState === 'visible' && inflight.current === 0) load();
+      if (document.visibilityState === 'visible' && requests.inflight === 0) load();
     }, POLL_MS);
     return () => clearInterval(timer);
-  }, [load]);
+  }, [load, requests]);
 
   /** Shows `optimistic` right away, keeps only the newest answer. Returns null on failure. */
   const mutate = useCallback(
     async (request, optimistic) => {
-      const call = ++latest.current;
+      requests.latest += 1;
+      const call = requests.latest;
       if (optimistic) setView(optimistic);
-      inflight.current += 1;
+      requests.inflight += 1;
       try {
-        const next = stablePhotos(await request());
-        if (call === latest.current) setView(next);
+        const next = await request();
+        if (call === requests.latest) setView(next);
         return next;
       } catch (err) {
-        showToast(ERRORS[err.code] ?? "Couldn't save that. Try again.");
+        showToast(ERRORS[err.code] || "Couldn't save that. Try again.");
         load();
         return null;
       } finally {
-        inflight.current -= 1;
+        requests.inflight -= 1;
       }
     },
-    [load, showToast, stablePhotos],
+    [load, showToast, requests],
   );
 
   if (phase === 'loading') return <LoadingBill id={id} summary={cachedProfile()?.bills?.find((b) => b.id === id)} />;
@@ -131,7 +132,7 @@ export default function BillScreen() {
     );
   }
 
-  const { bill, items, members, me, photos } = view;
+  const { bill, items, members, me } = view;
   const currency = bill.currency;
   const money = (minor) => formatMoney(minor, currency);
   const memberById = new Map(members.map((m) => [m.id, m]));
@@ -141,8 +142,8 @@ export default function BillScreen() {
   // The whole bill is covered: what guests paid back plus the payer's own share reaches
   // the bill total (tips included). The payer's share is never "collected", so it counts here.
   const payerRow = members.find((m) => m.isPayer);
-  const covered = guests.length > 0 && bill.collected + (payerRow?.due ?? 0) >= bill.card;
-  const payerTip = payerRow?.tip ?? 0;
+  const covered = guests.length > 0 && bill.collected + (payerRow?.due || 0) >= bill.card;
+  const payerTip = payerRow?.tip || 0;
 
   // Closes on the tap; the tips and the bill total update before the server answers.
   function savePayerTip(tip) {
@@ -375,7 +376,7 @@ export default function BillScreen() {
       <TipSheet
         open={tipOpen}
         onClose={() => setTipOpen(false)}
-        total={payerRow?.total ?? 0}
+        total={payerRow?.total || 0}
         currentTip={payerTip}
         currency={currency}
         onSaveTip={savePayerTip}
@@ -389,7 +390,7 @@ export default function BillScreen() {
         onStatus={setStatus}
         onRemove={removeMember}
       />
-      <Sheet open={viewing !== null} onClose={() => setViewing(null)} title={`Photo ${(viewing ?? 0) + 1} of ${photos.length}`}>
+      <Sheet open={viewing !== null} onClose={() => setViewing(null)} title={`Photo ${(viewing || 0) + 1} of ${photos.length}`}>
         {viewing !== null && <img className="photo-full" src={photos[viewing]} alt={`Receipt photo ${viewing + 1}`} />}
       </Sheet>
     </div>
@@ -502,7 +503,7 @@ function PersonSheet({ member, bill, currency, onClose, onStatus, onRemove }) {
   if (member && member !== shown) setShown(member);
   if (!member && confirmRemove) setConfirmRemove(false);
 
-  const m = member ?? shown;
+  const m = member || shown;
   const money = (minor) => formatMoney(minor, currency);
   const extras = extrasLabel(bill);
   const isPaid = m?.status === 'confirmed';
@@ -511,7 +512,7 @@ function PersonSheet({ member, bill, currency, onClose, onStatus, onRemove }) {
     <Sheet
       open={Boolean(member)}
       onClose={onClose}
-      title={m?.name ?? ''}
+      title={m?.name || ''}
       footer={
         m && (
           <>

@@ -1,11 +1,11 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import Amount from '../../components/Amount.jsx';
 import Icon from '../../components/Icon.jsx';
 import Sheet from '../../components/Sheet.jsx';
 import { useToast } from '../../components/Toast.jsx';
-import { api, cachedBill, cachedProfile } from '../../lib/api.js';
-import { formatMoney } from '../../lib/money.js';
+import { api, cachedBill, cachedProfile } from '../../api/client.js';
+import { formatMoney } from '../../utils/money.js';
 import { ExtrasSheet, Field, ItemSheet, totals } from './NewBill.jsx';
 import './newbill.css';
 
@@ -38,7 +38,8 @@ export default function EditBill() {
   // Opens filled in from the last copy of the bill; the fresh one replaces it only until
   // the payer starts editing (never over their changes). The server re-checks on save.
   const [draft, setDraft] = useState(() => draftFrom(cachedBill(id)));
-  const edited = useRef(false);
+  // Has the payer changed anything? (useState keeps this object between renders.)
+  const [editState] = useState({ edited: false });
   const [failed, setFailed] = useState(false);
   const [saving, setSaving] = useState(false);
   const [editing, setEditing] = useState(null);
@@ -51,7 +52,7 @@ export default function EditBill() {
     let active = true;
     api
       .payerBill(id)
-      .then((view) => active && !edited.current && setDraft(draftFrom(view)))
+      .then((view) => active && !editState.edited && setDraft(draftFrom(view)))
       .catch(() => active && !cachedBill(id) && setFailed(true));
     return () => {
       active = false;
@@ -72,7 +73,7 @@ export default function EditBill() {
   if (!draft) return <LoadingEdit id={id} summary={cachedProfile()?.bills?.find((b) => b.id === id)} />;
 
   const update = (changes) => {
-    edited.current = true;
+    editState.edited = true;
     setDraft((d) => ({ ...d, ...changes }));
   };
   const { subtotal, total } = totals(draft);
@@ -216,7 +217,7 @@ export default function EditBill() {
         open={editing !== null}
         item={editingItem}
         currency={draft.currency}
-        minQuantity={editingItem?.claimed ?? 1}
+        minQuantity={editingItem?.claimed || 1}
         onClose={() => setEditing(null)}
         onSave={(saved) => {
           update({

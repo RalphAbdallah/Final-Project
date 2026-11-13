@@ -7,6 +7,8 @@
 | Team | Ralph Abdallah · Charbel Harb · Jason Khadra |
 | Course | 020WBPES3 Web Programming · ESIB |
 
+**Changed 12 November 2026 (team decision):** the app is rewritten with only the course's code (the teacher requires the team to understand every line). Supabase is gone: payers sign up and log in with our own Express routes (bcrypt hashes, JWT), the database is MongoDB (Mongoose), and receipt photos are stored in MongoDB as base64 text, shown only to the bill's payer. An email change applies at once (no confirmation link). Where this document says Supabase or Postgres, read MongoDB and our own auth.
+
 Anything marked **(proposed)** goes beyond the proposal and needs team agreement. Open questions, each with a proposed default so work isn't blocked, are in [§13](#13-open-questions).
 
 ---
@@ -109,9 +111,9 @@ M11 was added after the proposal (team decision, 2 November 2026) and replaces t
 ## 7. Functional requirements
 
 ### M1 Payer account
-- Email and password sign-up, log-in and log-out through Supabase Auth. The session survives a reload.
+- Email and password sign-up, log-in and log-out (bcrypt, JWT; changed 12 November 2026). The session survives a reload.
 - Profile: the payer's name.
-- The Express API verifies the Supabase access token on every payer request. Missing or invalid token returns 401. A bill that belongs to someone else returns 404, so its existence isn't leaked.
+- The Express API verifies the JWT on every payer request. Missing or invalid token returns 401. A bill that belongs to someone else returns 404, so its existence isn't leaked.
 
 **Get-paid setup** (team decision, 3 November 2026; replaces the wallet phone number)
 - Right after sign-up, the payer answers "How do you receive money?" and picks any of Whish, OMT, Neo and Suyool. Cash always works and needs no setup.
@@ -136,7 +138,7 @@ Team decision, 3 November 2026: bills are never typed in from scratch.
 
 ### M3 Receipt photos
 - Photos are downscaled on the phone before upload (long side ≤ 1600 px, JPEG).
-- Stored in a private Supabase Storage bucket (`receipts`), one row per photo in `bill_photos`; served through short-lived signed URLs.
+- Stored in MongoDB (Photo collection, base64), linked to the bill; only the bill's payer can load them (changed 12 November 2026).
 - Guests can view them, to check the items against the paper (later iteration).
 
 **Accept when:** the photos used to create a bill are stored with it, in order.

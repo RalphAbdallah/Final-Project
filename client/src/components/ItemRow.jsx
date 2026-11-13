@@ -1,5 +1,5 @@
-import { formatMoney } from '../lib/money.js';
-import { joinNames } from '../lib/people.js';
+import { formatMoney } from '../utils/money.js';
+import { joinNames } from '../utils/people.js';
 import Avatars from './Avatars.jsx';
 import Stepper from './Stepper.jsx';
 

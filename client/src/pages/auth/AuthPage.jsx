@@ -1,32 +1,37 @@
-import { useId, useState } from 'react';
-import { Link, Navigate, useLocation, useNavigate } from 'react-router-dom';
+import { useEffect, useState } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
 import PasswordInput from '../../components/PasswordInput.jsx';
-import { authErrorMessage, useAuth } from '../../lib/auth.jsx';
-import { supabase } from '../../lib/supabase.js';
+import { authErrorMessage, useAuth } from '../../auth/AuthContext.jsx';
 import './auth.css';
 
 const MIN_PASSWORD = 8;
 
-/** Log in and sign up share one screen: dark top with the title, form on the white sheet. */
-export default function AuthPage({ mode }) {
+/**
+ * Log in and sign up share one screen: dark top with the title, form on the white sheet.
+ * `stay`: shown in place of a locked page (RequireAuth); after logging in, that page appears.
+ */
+export default function AuthPage({ mode, stay = false }) {
   const isSignup = mode === 'signup';
-  const { session } = useAuth();
+  const { token, login, signup } = useAuth();
   const navigate = useNavigate();
-  const location = useLocation();
+  // One state object for every field (Session 15, controlled forms).
   const [fields, setFields] = useState({ name: '', email: '', password: '' });
   const [error, setError] = useState(null);
   const [busy, setBusy] = useState(false);
-  const [checkInbox, setCheckInbox] = useState(false);
-  const ids = { name: useId(), email: useId(), password: useId(), error: useId() };
 
-  if (session) return <Navigate to={isSignup ? '/get-paid' : (location.state?.from ?? '/')} replace />;
+  // Already logged in and on /login or /signup: go home. (Not while submitting:
+  // handleSubmit decides where to go after a successful sign up or log in.)
+  useEffect(() => {
+    if (token && !stay && !busy) navigate('/', { replace: true });
+  }, [token, stay, busy, navigate]);
 
-  const set = (key) => (event) => {
-    setFields((f) => ({ ...f, [key]: event.target.value }));
+  function handleChange(event) {
+    const { name, value } = event.target;
+    setFields({ ...fields, [name]: value });
     if (error) setError(null);
-  };
+  }
 
-  async function submit(event) {
+  async function handleSubmit(event) {
     event.preventDefault();
     const name = fields.name.trim();
     const email = fields.email.trim();
@@ -37,33 +42,16 @@ export default function AuthPage({ mode }) {
     }
 
     setBusy(true);
-    const result = isSignup
-      ? await supabase.auth.signUp({
-          email,
-          password: fields.password,
-          options: { data: { name }, emailRedirectTo: `${window.location.origin}/get-paid` },
-        })
-      : await supabase.auth.signInWithPassword({ email, password: fields.password });
-    setBusy(false);
-
-    if (result.error) return setError(authErrorMessage(result.error));
-    if (isSignup && !result.data.session) return setCheckInbox(true);
-    navigate(isSignup ? '/get-paid' : (location.state?.from ?? '/'), { replace: true });
-  }
-
-  if (checkInbox) {
-    return (
-      <main className="state on-night">
-        <h1 className="state__title">Check your inbox</h1>
-        <p className="state__text">
-          We sent a link to <strong>{fields.email.trim()}</strong>. Open it on this device to finish creating your
-          account.
-        </p>
-        <Link className="pill pill--night" to="/login">
-          Back to log in
-        </Link>
-      </main>
-    );
+    try {
+      if (isSignup) await signup(name, email, fields.password);
+      else await login(email, fields.password);
+    } catch (err) {
+      setBusy(false);
+      return setError(authErrorMessage(err));
+    }
+    // New payers set up how they get paid first. Shown in place of a page: that page appears by itself.
+    if (isSignup) navigate('/get-paid', { replace: true });
+    else if (!stay) navigate('/', { replace: true });
   }
 
   return (
@@ -80,17 +68,18 @@ export default function AuthPage({ mode }) {
       </header>
 
       <main className="surface on-day">
-        <form className="auth-form" onSubmit={submit} noValidate aria-describedby={error ? ids.error : undefined}>
+        <form className="auth-form" onSubmit={handleSubmit} noValidate aria-describedby={error ? 'auth-error' : undefined}>
           {isSignup && (
             <div className="field">
-              <label htmlFor={ids.name} className="field__label">
+              <label htmlFor="auth-name" className="field__label">
                 Your name
               </label>
               <input
-                id={ids.name}
+                id="auth-name"
+                name="name"
                 className="field-input"
                 value={fields.name}
-                onChange={set('name')}
+                onChange={handleChange}
                 autoComplete="name"
                 autoCapitalize="words"
                 maxLength={60}
@@ -98,35 +87,37 @@ export default function AuthPage({ mode }) {
             </div>
           )}
           <div className="field">
-            <label htmlFor={ids.email} className="field__label">
+            <label htmlFor="auth-email" className="field__label">
               Email
             </label>
             <input
-              id={ids.email}
+              id="auth-email"
+              name="email"
               className="field-input"
               type="email"
               inputMode="email"
               value={fields.email}
-              onChange={set('email')}
+              onChange={handleChange}
               autoComplete="email"
               autoCapitalize="none"
               spellCheck={false}
             />
           </div>
           <div className="field">
-            <label htmlFor={ids.password} className="field__label">
+            <label htmlFor="auth-password" className="field__label">
               Password
             </label>
             <PasswordInput
-              id={ids.password}
+              id="auth-password"
+              name="password"
               value={fields.password}
-              onChange={set('password')}
+              onChange={handleChange}
               autoComplete={isSignup ? 'new-password' : 'current-password'}
             />
           </div>
 
           {error && (
-            <p id={ids.error} className="form-error" role="alert">
+            <p id="auth-error" className="form-error" role="alert">
               {error}
             </p>
           )}
@@ -138,9 +129,7 @@ export default function AuthPage({ mode }) {
 
         <p className="auth__switch">
           {isSignup ? 'Already have an account? ' : 'New to splIT? '}
-          <Link to={isSignup ? '/login' : '/signup'} state={location.state}>
-            {isSignup ? 'Log in' : 'Create an account'}
-          </Link>
+          <Link to={isSignup ? '/login' : '/signup'}>{isSignup ? 'Log in' : 'Create an account'}</Link>
         </p>
       </main>
     </div>

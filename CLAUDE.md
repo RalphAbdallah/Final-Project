@@ -13,7 +13,7 @@ These live in `MD/` and load at session start. They change between iterations, s
 - **MD/PRD.md**: what to build and the rules it must follow (split math, payment states, security).
 - **MD/PLAN.md**: order of work, current status, decisions, iteration log.
 - **MD/DESIGN.md**: the visual system. Empty until Phase D.
-- `splIT_proposal.md` (root) is the submitted proposal. Read-only: never edit it.
+- `MD/splIT_proposal.md` is the submitted proposal. Read-only: never edit it.
 
 If a request conflicts with the PRD, say so before building. Items marked "(proposed)" or listed as open questions in the PRD aren't settled; flag them when a task depends on one.
 
@@ -50,14 +50,17 @@ Project specifics:
 
 ## Stack and conventions
 
-- The project is two independent npm projects, each with its own `node_modules` and lockfile: `frontend/` and `backend/`. No workspaces, nothing installed at the root. Root shortcuts: `npm run install:all`, `npm run dev:backend` and `npm run dev:frontend` (two terminals), `npm test`, `npm run build`.
-- `frontend/`: React (Vite) and **plain CSS**. No Tailwind, CSS-in-JS or component kits. Design tokens are CSS custom properties in `frontend/src/styles/tokens.css`.
-- Database: Supabase Postgres via `DATABASE_URL` in `backend/.env`. `npm run db:check` tests the connection; `npm run db:migrate` applies new files in `backend/src/db/migrations/` (never edit an applied migration; add a new numbered file). Every table has row level security on with no policies, so only the backend can reach data; keep it that way for new tables.
-- `backend/`: Node.js and Express REST API. All split and rounding logic lives in `backend/src/split/`. One exception (team decision, 3 November 2026): the guest page previews a claim instantly with an exact copy of the engine, `frontend/src/lib/split.js`; display only, the server's answer replaces it. After changing `backend/src/split/index.js`, copy it over (`split/copy.test.js` fails until you do). Routes take a `repo` (data access): `repo/postgres.js` in the app, `repo/memory.js` in tests, with the same methods; add new data access to both. Payer routes require a Supabase access token (`src/auth.js`); tests inject a fake `verifyToken`.
-- Receipt reading (PRD M2): the AI (`backend/src/receipts/openai.js`) only copies printed values into a strict JSON schema; every calculation lives in `receipts/draft.js` and is unit-tested against the receipts in `Receipts/`. Never move math into the prompt. Real reads cost OpenAI credit: test with the fake reader in `app.test.js`.
-- Frontend auth: Supabase client (`lib/supabase.js`) only for sign-in, loaded on payer pages only (`pages/PayerArea.jsx`); payer API calls attach the token via `setTokenSource`. Guest pages must not import `lib/auth.jsx` or `lib/supabase.js`.
-- npm on Windows used to drop Rolldown's native build (used by Vite and Vitest) on incremental installs ("Cannot find native binding"). It's now pinned in `optionalDependencies` of both packages; when Vite or Vitest is upgraded, update that pin to the new `rolldown` version. Fallback: delete `node_modules` and `package-lock.json` in that folder, then `npm install`.
-- Supabase: Postgres, Auth (payer only), Storage. The browser uses Supabase **only for auth**; every data read and write goes through Express.
+**Course-only code (team rule since 12 November 2026):** the teacher requires that the team understands every line, so all code uses the patterns from the course slides (`../Cours/`, Sessions 1-22) and the capstone architecture they describe. Allowed extras beyond the slides, because a feature needs them: `Link`/`useNavigate`/`useParams`, `qrcode` and `jsqr`, canvas photo shrinking, clipboard and share, pointer events (sheet drag), CSS `position`/`overflow`/`z-index`/`calc`/`env`, `<dialog>`. Don't add other libraries or patterns (no `useRef`, `useId`, `useMemo`, `??`, classes, regex where string methods do); when a value must survive renders without re-rendering, the code uses `const [box] = useState({ ... })` and changes its fields. Keep the UI exactly as it is.
+
+- Two independent npm projects, each with its own `node_modules` and lockfile: `client/` and `server/`. Root shortcuts: `npm run install:all`, `npm run dev:server` and `npm run dev:client` (two terminals), `npm test`, `npm run build`.
+- `client/`: React (Vite) and **plain CSS**. `src/api/client.js` (apiFetch: base URL, token, errors, the localStorage cache), `src/auth/AuthContext.jsx` (token in localStorage; `RequireAuth` shows the log-in form in place of a locked page), `src/pages/`, `src/components/`, `src/utils/`. Design tokens are CSS custom properties in `client/src/styles/tokens.css`. Animations are CSS transitions and keyframes (no animation library).
+- `server/`: Node.js and Express. `server.js` (dotenv, connect to MongoDB, listen) and `app.js` (exported app, no port). `models/` (Mongoose: User, Bill with items/members/claims embedded, Photo, AiUsage), `routes/` (auth, me, bills, receipts, share), `middleware/` (requireAuth, logger, rateLimits), `auth/token.js` (JWT), `services/` (split engine, views, OpenAI reader, draft math, AI limits), `tests/`.
+- Database: MongoDB Atlas via `MONGODB_URI` in `server/.env`. Bills are changed with `changeBill()` (`services/bills.js`): read, change, save; the schema's `optimisticConcurrency` makes a colliding save fail and it retries, so simultaneous claims are never lost.
+- Auth: bcrypt hashes and JWT (`JWT_SECRET`), `Authorization: Bearer <token>`. Every payer query filters by `userId` (another payer's bill is a 404). Guests have no account: the share token picks the bill, `X-Guest-Token` picks the member.
+- All split and rounding logic lives in `server/services/split.js`. The guest page previews a claim with an exact copy, `client/src/utils/split.js`; after changing the server's, copy it over (`tests/copy.test.js` fails until you do).
+- Receipt reading (PRD M2): the AI (`services/openai.js`) only copies printed values into a strict JSON schema; every calculation lives in `services/draft.js`. Never move math into the prompt. Real reads cost OpenAI credit: the tests use a fake reader (`vi.mock` in `tests/api.test.js`).
+- Receipt photos travel and are stored as base64 text (Photo collection); the bill keeps their ids.
 - Money is integer minor units in code (cents for USD, whole pounds for LBP). Never floats.
 - Mobile first: the guest flow happens on phones at the table.
 - Secrets live in `.env` files, never committed. The OpenAI key stays on the server.
+- Tests: `npm test` in `server/` starts a throwaway in-memory MongoDB (`tests/db.js`).

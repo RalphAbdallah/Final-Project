@@ -1,93 +1,20 @@
-import { MotionConfig } from 'motion/react';
-import LoadingScreen from './components/Loading.jsx';
-import { lazy, StrictMode, Suspense } from 'react';
+import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
-import { BrowserRouter, Route, Routes } from 'react-router-dom';
+import { BrowserRouter } from 'react-router-dom';
+import { AuthProvider } from './auth/AuthContext.jsx';
+import App from './App.jsx';
 import './styles/tokens.css';
 import './styles/base.css';
 import './styles/layout.css';
 import './components/components.css';
 
-// Each page loads on its own. Guests opening a bill link never download the
-// payer screens, the Supabase client or the QR reader.
-const PayerArea = lazy(() => import('./pages/PayerArea.jsx'));
-const RequireAuth = lazy(() => import('./lib/auth.jsx').then((m) => ({ default: m.RequireAuth })));
-const Home = lazy(() => import('./pages/Home.jsx'));
-const AuthPage = lazy(() => import('./pages/auth/AuthPage.jsx'));
-const GetPaid = lazy(() => import('./pages/payer/GetPaid.jsx'));
-const NewBill = lazy(() => import('./pages/payer/NewBill.jsx'));
-const ShareBill = lazy(() => import('./pages/payer/ShareBill.jsx'));
-const BillScreen = lazy(() => import('./pages/payer/BillScreen.jsx'));
-const EditBill = lazy(() => import('./pages/payer/EditBill.jsx'));
-const Profile = lazy(() => import('./pages/payer/Profile.jsx'));
-const GuestBill = lazy(() => import('./pages/guest/GuestBill.jsx'));
-const NotFound = lazy(() => import('./pages/NotFound.jsx'));
-
+// One empty div in index.html, one root component (Session 13).
 createRoot(document.getElementById('root')).render(
   <StrictMode>
-    {/* "user": transforms are dropped when the OS asks for reduced motion; fades stay. */}
-    <MotionConfig reducedMotion="user">
-      <BrowserRouter>
-        <Suspense fallback={<LoadingScreen />}>
-          <Routes>
-            <Route element={<PayerArea />}>
-              <Route path="/" element={<Home />} />
-              <Route path="/login" element={<AuthPage mode="login" />} />
-              <Route path="/signup" element={<AuthPage mode="signup" />} />
-              <Route
-                path="/get-paid"
-                element={
-                  <RequireAuth>
-                    <GetPaid />
-                  </RequireAuth>
-                }
-              />
-              <Route
-                path="/bills/new"
-                element={
-                  <RequireAuth>
-                    <NewBill />
-                  </RequireAuth>
-                }
-              />
-              <Route
-                path="/profile"
-                element={
-                  <RequireAuth>
-                    <Profile />
-                  </RequireAuth>
-                }
-              />
-              <Route
-                path="/bills/:id"
-                element={
-                  <RequireAuth>
-                    <BillScreen />
-                  </RequireAuth>
-                }
-              />
-              <Route
-                path="/bills/:id/edit"
-                element={
-                  <RequireAuth>
-                    <EditBill />
-                  </RequireAuth>
-                }
-              />
-              <Route
-                path="/bills/:id/share"
-                element={
-                  <RequireAuth>
-                    <ShareBill />
-                  </RequireAuth>
-                }
-              />
-            </Route>
-            <Route path="/b/:shareToken" element={<GuestBill />} />
-            <Route path="*" element={<NotFound />} />
-          </Routes>
-        </Suspense>
-      </BrowserRouter>
-    </MotionConfig>
+    <BrowserRouter>
+      <AuthProvider>
+        <App />
+      </AuthProvider>
+    </BrowserRouter>
   </StrictMode>,
 );

@@ -1,14 +1,14 @@
-import { useEffect, useId, useRef, useState } from 'react';
-import { useLocation, useNavigate } from 'react-router-dom';
+import { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import Amount from '../../components/Amount.jsx';
 import Icon from '../../components/Icon.jsx';
 import Sheet from '../../components/Sheet.jsx';
 import Stepper from '../../components/Stepper.jsx';
 import { useToast } from '../../components/Toast.jsx';
-import { api } from '../../lib/api.js';
-import { prepareReceiptPhoto } from '../../lib/images.js';
-import { clearNewBill, loadNewBill, saveNewBill } from '../../lib/newBillStore.js';
-import { formatMoney, parseMoney, plainAmount } from '../../lib/money.js';
+import { api } from '../../api/client.js';
+import { prepareReceiptPhoto } from '../../utils/images.js';
+import { clearNewBill, loadNewBill, saveNewBill } from '../../utils/newBillStore.js';
+import { formatMoney, parseMoney, plainAmount } from '../../utils/money.js';
 import './newbill.css';
 
 const MAX_PHOTOS = 6;
@@ -19,7 +19,7 @@ const DEFAULT_LBP_RATE = 89_500;
 const READ_ERRORS = {
   not_a_receipt: "That doesn't look like a receipt. Retake the photo with the whole receipt in view.",
   no_items: "We couldn't find any items. Try a sharper photo, in good light, flat on the table.",
-  ai_not_configured: 'Receipt reading is off: add the OpenAI key to backend/.env and restart the backend.',
+  ai_not_configured: 'Receipt reading is off: add the OpenAI key to server/.env and restart the server.',
   offline: "You're offline. Check your connection and try again.",
   photo_too_large: 'One of the photos is too large. Retake it and try again.',
   ai_timeout: 'Reading is slow right now. Try again in a moment.',
@@ -29,8 +29,8 @@ const READ_ERRORS = {
 /** Reading limits (backend receipts/limits.js): say plainly when they can try again. */
 function limitMessage(err) {
   const wait = err.data?.retryAfter;
-  const when =
-    wait == null ? 'later' : wait < 3600 ? `in ${Math.ceil(wait / 60)} min` : `in ${Math.ceil(wait / 3600)} h`;
+  let when = 'later';
+  if (wait) when = wait < 3600 ? `in ${Math.ceil(wait / 60)} min` : `in ${Math.ceil(wait / 3600)} h`;
   return {
     read_in_progress: 'A receipt is already being read. Wait for it to finish.',
     ai_hourly_limit: `You've read a lot of receipts this hour. Try again ${when}.`,
@@ -76,48 +76,31 @@ export default function NewBill() {
   const [creating, setCreating] = useState(false);
   const [preparing, setPreparing] = useState(false);
   const [toast, showToast] = useToast();
-  const lastSwitch = useRef(null);
-  const rateId = useId();
   const [editingRate, setEditingRate] = useState(false);
-  const photosRef = useRef(photos);
-  photosRef.current = photos;
+  // The last currency switch, to undo it exactly (see switchCurrency). useState keeps
+  // this same object between renders; changing its field doesn't re-render.
+  const [currencyMemory] = useState({ lastSwitch: null });
 
-  useEffect(() => () => photosRef.current.forEach((p) => URL.revokeObjectURL(p.url)), []);
-
-  // "New bill" on home opens the camera and hands the photo over: start a fresh bill
-  // with it, and clear it from history so a reload doesn't add it again. Otherwise,
-  // pick up the bill in progress from before a reload.
-  const location = useLocation();
-  const started = useRef(false);
+  // Pick up the bill in progress: from before a reload, or the photo "New bill" on
+  // home just took (home saved it to the same place, utils/newBillStore.js).
   const [restored, setRestored] = useState(false);
   useEffect(() => {
-    if (started.current) return;
-    started.current = true;
-    const handed = location.state?.photos;
-    if (handed?.length) {
-      navigate(location.pathname, { replace: true, state: null });
-      clearNewBill().then(() => setRestored(true));
-      addFiles(handed);
-      return;
+    const { photos: saved, review } = loadNewBill();
+    if (saved) setPhotos(saved);
+    if (review && review.draft) {
+      setDraft(review.draft);
+      setPhotoPaths(review.photoPaths);
+      setReadKey(review.readKey);
+      currencyMemory.lastSwitch = review.lastSwitch;
+      setPhase(review.phase);
     }
-    loadNewBill().then(({ photos: saved, review }) => {
-      if (saved?.length) setPhotos(saved.map((p) => ({ ...p, url: URL.createObjectURL(p.blob) })));
-      if (review?.draft) {
-        setDraft(review.draft);
-        setPhotoPaths(review.photoPaths);
-        setReadKey(review.readKey);
-        lastSwitch.current = review.lastSwitch;
-        setPhase(review.phase);
-      }
-      setRestored(true);
-    });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+    setRestored(true);
+  }, [currencyMemory]);
 
   // Save as it changes, so a reload keeps it. Photos and review apart: typing a fix
   // shouldn't rewrite the photos. A read in progress is saved as the photos screen.
   useEffect(() => {
-    if (restored) saveNewBill('photos', photos.map(({ id, blob }) => ({ id, blob })));
+    if (restored) saveNewBill('photos', photos);
   }, [restored, photos]);
   useEffect(() => {
     if (!restored) return;
@@ -126,9 +109,9 @@ export default function NewBill() {
       photoPaths,
       readKey,
       phase: phase === 'review' ? 'review' : 'photos',
-      lastSwitch: lastSwitch.current,
+      lastSwitch: currencyMemory.lastSwitch,
     });
-  }, [restored, draft, photoPaths, readKey, phase]);
+  }, [restored, draft, photoPaths, readKey, phase, currencyMemory]);
 
   async function addFiles(fileList) {
     const files = [...fileList].slice(0, MAX_PHOTOS - photos.length);
@@ -138,8 +121,7 @@ export default function NewBill() {
     const added = [];
     for (const file of files) {
       try {
-        const blob = await prepareReceiptPhoto(file);
-        added.push({ id: newKey('photo'), blob, url: URL.createObjectURL(blob) });
+        added.push({ id: newKey('photo'), url: await prepareReceiptPhoto(file) });
       } catch {
         showToast("One photo couldn't be opened. Try taking it again.");
       }
@@ -149,11 +131,7 @@ export default function NewBill() {
   }
 
   function removePhoto(id) {
-    setPhotos((list) => {
-      const photo = list.find((p) => p.id === id);
-      if (photo) URL.revokeObjectURL(photo.url);
-      return list.filter((p) => p.id !== id);
-    });
+    setPhotos((list) => list.filter((p) => p.id !== id));
     if (unclear.includes(id)) {
       const rest = unclear.filter((u) => u !== id);
       setUnclear(rest);
@@ -175,25 +153,25 @@ export default function NewBill() {
     setError(null);
     setUnclear([]);
     try {
-      const result = await api.readReceipt(photos.map((p) => p.blob));
+      const result = await api.readReceipt(photos.map((p) => p.url));
       setDraft({
         ...result.draft,
         items: result.draft.items.map(withKey),
-        lbpRate: result.draft.lbpRate ?? DEFAULT_LBP_RATE,
+        lbpRate: result.draft.lbpRate || DEFAULT_LBP_RATE,
       });
-      lastSwitch.current = null;
+      currencyMemory.lastSwitch = null;
       setPhotoPaths(result.photos);
       setReadKey(key);
       setPhase('review');
     } catch (err) {
       setPhase('photos');
       if (err.code === 'unclear_photos') {
-        const numbers = err.data.photos ?? [];
+        const numbers = err.data.photos || [];
         setUnclear(numbers.map((n) => photos[n - 1]?.id).filter(Boolean));
         setError(unclearMessage(numbers, photos.length));
         return;
       }
-      setError(limitMessage(err) ?? READ_ERRORS[err.code] ?? "Couldn't read the receipt right now. Try again in a moment.");
+      setError(limitMessage(err) || READ_ERRORS[err.code] || "Couldn't read the receipt right now. Try again in a moment.");
     }
   }
 
@@ -207,7 +185,7 @@ export default function NewBill() {
         items: items.map(({ name, quantity, price }) => ({ name: name.trim(), quantity, price })),
         photos: photoPaths,
       });
-      await clearNewBill();
+      clearNewBill();
       navigate(`/bills/${id}/share`, { replace: true });
     } catch (err) {
       setCreating(false);
@@ -225,16 +203,17 @@ export default function NewBill() {
     // Converting rounds, so going back to the receipt's own currency restores each
     // amount as printed (unless it was edited since) instead of converting it again.
     // Going away from it always converts at the current rate.
-    const original = lastSwitch.current?.original ?? draft.currency;
-    const undo = currency === original && lastSwitch.current ? lastSwitch.current.amounts : {};
+    const last = currencyMemory.lastSwitch;
+    const original = last ? last.original : draft.currency;
+    const undo = currency === original && last ? last.amounts : {};
     const amounts = {};
     const change = (id, minor) => {
-      if (minor == null) return minor;
+      if (minor === null || minor === undefined) return minor;
       const next = undo[id]?.after === minor ? undo[id].before : convert(minor);
       amounts[id] = { before: minor, after: next };
       return next;
     };
-    lastSwitch.current = { original, amounts };
+    currencyMemory.lastSwitch = { original, amounts };
     update({
       currency,
       tax: change('tax', draft.tax),
@@ -244,8 +223,9 @@ export default function NewBill() {
   }
 
   function changeRate(text) {
-    const lbpRate = Number(text.replace(/\D/g, '').slice(0, 7)) || null;
-    const last = lastSwitch.current;
+    const digits = [...text].filter((char) => char >= '0' && char <= '9').join('');
+    const lbpRate = Number(digits.slice(0, 7)) || null;
+    const last = currencyMemory.lastSwitch;
     if (!lbpRate || last?.original !== 'USD' || draft.currency !== 'LBP') return update({ lbpRate });
     // Showing a dollar receipt in pounds: reconvert from the printed dollars as the
     // rate is typed. Amounts edited in pounds since the switch stay as typed.
@@ -341,17 +321,17 @@ export default function NewBill() {
           </div>
           {draft.currency === 'LBP' && (
             <div className="field">
-              <label htmlFor={rateId} className="field__label">
+              <label htmlFor="exchange-rate" className="field__label">
                 Exchange rate
               </label>
               <div className="money-input rate-input">
                 <span aria-hidden="true">$1 = LBP</span>
                 <input
-                  id={rateId}
+                  id="exchange-rate"
                   className="num"
                   inputMode="numeric"
                   // Commas only when not typing: reformatting mid-edit moves the caret.
-                  value={(editingRate ? draft.lbpRate : draft.lbpRate?.toLocaleString('en-US')) ?? ''}
+                  value={(editingRate ? draft.lbpRate : draft.lbpRate?.toLocaleString('en-US')) || ''}
                   onFocus={() => setEditingRate(true)}
                   onBlur={() => setEditingRate(false)}
                   onChange={(e) => changeRate(e.target.value)}
@@ -403,7 +383,7 @@ export default function NewBill() {
             {draft.tax > 0 && (
               <span className="review-extras__row num">
                 <span>
-                  Tax{draft.taxRate != null ? ` (${draft.taxRate}%)` : ''}
+                  Tax{draft.taxRate !== null ? ` (${draft.taxRate}%)` : ''}
                   {draft.taxIncluded ? ', included in prices' : ''}
                 </span>
                 <span>{money(draft.tax)}</span>
@@ -452,7 +432,7 @@ export default function NewBill() {
         }}
       />
       <ExtrasSheet open={extrasOpen} draft={draft} onClose={() => setExtrasOpen(false)} onSave={(changes) => { update(changes); setExtrasOpen(false); }} />
-      <Sheet open={viewing !== null} onClose={() => setViewing(null)} title={`Photo ${(viewing ?? 0) + 1} of ${photos.length}`}>
+      <Sheet open={viewing !== null} onClose={() => setViewing(null)} title={`Photo ${(viewing || 0) + 1} of ${photos.length}`}>
         {viewing !== null && <img className="photo-full" src={photos[viewing]?.url} alt={`Receipt photo ${viewing + 1}`} />}
       </Sheet>
     </div>
@@ -460,8 +440,6 @@ export default function NewBill() {
 }
 
 function PhotoStep({ photos, unclear, reading, preparing, error, onAdd, onRemove, onRead, onBack, toast }) {
-  const inputId = useId();
-  const libraryId = useId();
   const [viewing, setViewing] = useState(null);
   return (
     <div className="screen newbill">
@@ -508,9 +486,9 @@ function PhotoStep({ photos, unclear, reading, preparing, error, onAdd, onRemove
           ))}
           {!reading && photos.length < MAX_PHOTOS && (
             <li>
-              <label htmlFor={inputId} className={`photo-add${photos.length === 0 ? ' is-first' : ''}`} aria-busy={preparing}>
+              <label htmlFor="photo-camera" className={`photo-add${photos.length === 0 ? ' is-first' : ''}`} aria-busy={preparing}>
                 <input
-                  id={inputId}
+                  id="photo-camera"
                   type="file"
                   accept="image/*"
                   capture="environment"
@@ -540,9 +518,9 @@ function PhotoStep({ photos, unclear, reading, preparing, error, onAdd, onRemove
       <div className="dock on-day newbill__dock">
         {!reading && photos.length < MAX_PHOTOS && (
           // The tile opens the camera; this opens the photo library (several at once).
-          <label htmlFor={libraryId} className="pill pill--day pill--block" aria-busy={preparing}>
+          <label htmlFor="photo-library" className="pill pill--day pill--block" aria-busy={preparing}>
             <input
-              id={libraryId}
+              id="photo-library"
               type="file"
               accept="image/*"
               multiple
@@ -560,7 +538,7 @@ function PhotoStep({ photos, unclear, reading, preparing, error, onAdd, onRemove
           {reading ? 'Reading…' : 'Read receipt'}
         </button>
       </div>
-      <Sheet open={viewing !== null} onClose={() => setViewing(null)} title={`Photo ${(viewing ?? 0) + 1} of ${photos.length}`}>
+      <Sheet open={viewing !== null} onClose={() => setViewing(null)} title={`Photo ${(viewing || 0) + 1} of ${photos.length}`}>
         {viewing !== null && <img className="photo-full" src={photos[viewing]?.url} alt={`Receipt photo ${viewing + 1}`} />}
       </Sheet>
       {toast}
@@ -568,8 +546,11 @@ function PhotoStep({ photos, unclear, reading, preparing, error, onAdd, onRemove
   );
 }
 
+// An id made from the label: "Price each" -> "field-price-each" (one of each per screen).
+const idFor = (label) => `field-${label.toLowerCase().replaceAll(' ', '-')}`;
+
 export function Field({ label, value, onChange, type = 'text', ...rest }) {
-  const id = useId();
+  const id = idFor(label);
   return (
     <div className="field">
       <label htmlFor={id} className="field__label">
@@ -581,7 +562,7 @@ export function Field({ label, value, onChange, type = 'text', ...rest }) {
 }
 
 function MoneyField({ label, currency, value, onChange, invalid }) {
-  const id = useId();
+  const id = idFor(label);
   return (
     <div className="field">
       <label htmlFor={id} className="field__label">
@@ -607,17 +588,14 @@ export function ItemSheet({ open, item, currency, onClose, onSave, onDelete, min
   const [name, setName] = useState('');
   const [quantity, setQuantity] = useState(1);
   const [price, setPrice] = useState('');
-  const [wasOpen, setWasOpen] = useState(false);
-  const nameId = useId();
 
-  if (open !== wasOpen) {
-    setWasOpen(open);
-    if (open) {
-      setName(item?.name ?? '');
-      setQuantity(item?.quantity ?? 1);
-      setPrice(item ? plainAmount(item.price, currency) : '');
-    }
-  }
+  // Each time the sheet opens, start from the item (or empty for a new one).
+  useEffect(() => {
+    if (!open) return;
+    setName(item ? item.name : '');
+    setQuantity(item ? item.quantity : 1);
+    setPrice(item ? plainAmount(item.price, currency) : '');
+  }, [open, item, currency]);
 
   const parsed = parseMoney(price, currency);
   const valid = name.trim() && parsed !== null;
@@ -643,10 +621,10 @@ export function ItemSheet({ open, item, currency, onClose, onSave, onDelete, min
     >
       <div className="sheet-form">
         <div className="field">
-          <label htmlFor={nameId} className="field__label">
+          <label htmlFor="item-name" className="field__label">
             Name
           </label>
-          <input id={nameId} className="field-input" value={name} onChange={(e) => setName(e.target.value)} maxLength={80} />
+          <input id="item-name" className="field-input" value={name} onChange={(e) => setName(e.target.value)} maxLength={80} />
         </div>
         <div className="review-row">
           <div className="field">
@@ -672,19 +650,15 @@ export function ExtrasSheet({ open, draft, onClose, onSave }) {
   const [rate, setRate] = useState('');
   const [included, setIncluded] = useState(false);
   const [service, setService] = useState('');
-  const [wasOpen, setWasOpen] = useState(false);
-  const rateId = useId();
-  const includedId = useId();
 
-  if (open !== wasOpen) {
-    setWasOpen(open);
-    if (open) {
-      setTax(plainAmount(draft.tax, draft.currency));
-      setRate(draft.taxRate == null ? '' : String(draft.taxRate));
-      setIncluded(draft.taxIncluded);
-      setService(plainAmount(draft.service, draft.currency));
-    }
-  }
+  // Each time the sheet opens, start from the bill's values.
+  useEffect(() => {
+    if (!open) return;
+    setTax(plainAmount(draft.tax, draft.currency));
+    setRate(draft.taxRate === null ? '' : String(draft.taxRate));
+    setIncluded(draft.taxIncluded);
+    setService(plainAmount(draft.service, draft.currency));
+  }, [open, draft]);
 
   const taxValue = tax.trim() === '' ? 0 : parseMoney(tax, draft.currency);
   const serviceValue = service.trim() === '' ? 0 : parseMoney(service, draft.currency);
@@ -713,18 +687,18 @@ export function ExtrasSheet({ open, draft, onClose, onSave }) {
         <div className="review-row">
           <MoneyField label="Tax" currency={draft.currency} value={tax} onChange={setTax} invalid={taxValue === null} />
           <div className="field">
-            <label htmlFor={rateId} className="field__label">
+            <label htmlFor="tax-rate" className="field__label">
               Rate (%)
             </label>
-            <input id={rateId} className="field-input num" inputMode="decimal" value={rate} onChange={(e) => setRate(e.target.value)} aria-invalid={!rateValid} />
+            <input id="tax-rate" className="field-input num" inputMode="decimal" value={rate} onChange={(e) => setRate(e.target.value)} aria-invalid={!rateValid} />
           </div>
         </div>
-        <label htmlFor={includedId} className="switch-row">
+        <label htmlFor="tax-included" className="switch-row">
           <span>
             <span className="switch-row__title">Tax included in prices</span>
             <span className="field__hint">Shown on the bill, not added again.</span>
           </span>
-          <input id={includedId} type="checkbox" role="switch" className="switch" checked={included} onChange={(e) => setIncluded(e.target.checked)} />
+          <input id="tax-included" type="checkbox" role="switch" className="switch" checked={included} onChange={(e) => setIncluded(e.target.checked)} />
         </label>
         <MoneyField label="Service" currency={draft.currency} value={service} onChange={setService} invalid={serviceValue === null} />
       </div>

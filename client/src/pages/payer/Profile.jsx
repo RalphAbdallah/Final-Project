@@ -1,33 +1,25 @@
 import LoadingScreen from '../../components/Loading.jsx';
-import { useEffect, useId, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import Icon from '../../components/Icon.jsx';
 import Sheet from '../../components/Sheet.jsx';
 import PasswordInput from '../../components/PasswordInput.jsx';
 import { useToast } from '../../components/Toast.jsx';
 import WalletLogo from '../../components/WalletLogo.jsx';
-import { api, cachedProfile } from '../../lib/api.js';
-import { hueFor, initials } from '../../lib/people.js';
-import { checkPassword, supabase } from '../../lib/supabase.js';
-import { walletName } from '../../lib/wallets.js';
+import { api, cachedProfile } from '../../api/client.js';
+import { useAuth } from '../../auth/AuthContext.jsx';
+import { hueFor, initials } from '../../utils/people.js';
+import { walletName } from '../../utils/wallets.js';
 import '../guest/guest.css';
 import '../payer/newbill.css';
 import './profile.css';
 
-/** Supabase Auth's messages, in the app's words. */
-function authMessage(error) {
-  const text = error?.message ?? '';
-  if (/same/i.test(text)) return "That's already your password. Pick a new one.";
-  if (/weak|at least|characters/i.test(text)) return 'New password must be at least 8 characters.';
-  if (/registered|already/i.test(text)) return 'Another account already uses that email.';
-  if (/invalid/i.test(text) && /email/i.test(text)) return "That email doesn't look right.";
-  if (/reauth|recent/i.test(text)) return 'For your security, log out and back in, then try again.';
-  return "Couldn't save that. Try again.";
-}
+const offlineOr = (err, message) => (err.code === 'offline' ? "You're offline. Try again." : message);
 
 /** The payer's account: who they are, how they get paid, their login, and leaving. */
 export default function Profile() {
   const navigate = useNavigate();
+  const { logout } = useAuth();
   const [profile, setProfile] = useState(cachedProfile);
   const [failed, setFailed] = useState(false);
   const [leaving, setLeaving] = useState(false);
@@ -45,12 +37,11 @@ export default function Profile() {
     };
   }, []);
 
-  async function logOut() {
-    setLeaving(true);
-    // Leave this page first: it requires a login, so signing out here would send it to
-    // the login screen instead of the landing page.
+  // Leave this page first: it needs a login, so logging out here would show the
+  // log-in form instead of the landing page.
+  function leave() {
     navigate('/', { replace: true });
-    await supabase.auth.signOut();
+    logout();
   }
 
   if (failed) {
@@ -140,29 +131,67 @@ export default function Profile() {
       </main>
 
       <div className="dock on-day">
-        <button type="button" className="pill pill--day pill--block profile__logout" onClick={logOut} disabled={leaving}>
+        <button
+          type="button"
+          className="pill pill--day pill--block profile__logout"
+          onClick={() => {
+            setLeaving(true);
+            leave();
+          }}
+          disabled={leaving}
+        >
           {leaving ? 'Logging out…' : 'Log out'}
         </button>
       </div>
       {toast}
 
-      <NameSheet
+      <FieldSheet
+        id="profile-name"
         open={editing === 'name'}
-        current={profile.name}
+        title="Your name"
+        description="Guests see it on your bills."
+        label="Name"
+        initial={profile.name}
+        saveLabel="Save"
+        autoComplete="name"
         onClose={close}
-        onSaved={(next) => {
-          setProfile(next);
+        save={async (value) => {
+          const name = value.split(' ').filter((word) => word !== '').join(' ');
+          if (name.length > 60) return 'Use a name of up to 60 characters.';
+          try {
+            setProfile(await api.rename(name));
+          } catch (err) {
+            return offlineOr(err, "Couldn't save your name. Try again.");
+          }
           close();
           showToast('Name saved.');
+          return null;
         }}
       />
-      <EmailSheet
+      <FieldSheet
+        id="profile-email"
         open={editing === 'email'}
-        current={profile.email}
+        title="Your email"
+        description="You'll use it to log in."
+        label="New email"
+        type="email"
+        initial=""
+        saveLabel="Save"
+        autoComplete="email"
         onClose={close}
-        onSaved={(email) => {
+        save={async (value) => {
+          const email = value.trim();
+          if (email.toLowerCase() === profile.email) return "That's already your email.";
+          try {
+            setProfile(await api.changeEmail(email));
+          } catch (err) {
+            if (err.code === 'email_taken') return 'Another account already uses that email.';
+            if (err.code === 'invalid_email') return "That email doesn't look right.";
+            return offlineOr(err, "Couldn't save that. Try again.");
+          }
           close();
-          showToast(`Check ${email} for a link to confirm the change.`);
+          showToast('Email saved.');
+          return null;
         }}
       />
       <PasswordSheet
@@ -173,45 +202,24 @@ export default function Profile() {
           showToast('Password changed.');
         }}
       />
-      <DeleteAccountSheet
-        open={editing === 'delete'}
-        onClose={close}
-        onDeleted={async () => {
-          navigate('/', { replace: true });
-          await supabase.auth.signOut();
-        }}
-      />
+      <DeleteAccountSheet open={editing === 'delete'} onClose={close} onDeleted={leave} />
     </div>
   );
 }
 
 /** One field in a sheet, saved by `save(value)`, which returns an error message or null. */
-function FieldSheet({ open, title, description, label, type = 'text', initial = '', saveLabel, save, onClose, autoComplete }) {
-  const id = useId();
+function FieldSheet({ id, open, title, description, label, type = 'text', initial = '', saveLabel, save, onClose, autoComplete }) {
   const [value, setValue] = useState(initial);
   const [error, setError] = useState(null);
   const [busy, setBusy] = useState(false);
-  const [wasOpen, setWasOpen] = useState(false);
-  if (open !== wasOpen) {
-    setWasOpen(open);
-    if (open) {
-      setValue(initial);
-      setError(null);
-      setBusy(false);
-    }
-  }
 
-  const inputProps = {
-    id,
-    className: 'field-input',
-    value,
-    onChange: (e) => {
-      setValue(e.target.value);
-      setError(null);
-    },
-    autoComplete,
-    'aria-invalid': Boolean(error),
-  };
+  // Each time the sheet opens, start from the current value.
+  useEffect(() => {
+    if (!open) return;
+    setValue(initial);
+    setError(null);
+    setBusy(false);
+  }, [open, initial]);
 
   async function submit() {
     setBusy(true);
@@ -236,7 +244,18 @@ function FieldSheet({ open, title, description, label, type = 'text', initial = 
         <label htmlFor={id} className="field__label">
           {label}
         </label>
-        <input {...inputProps} type={type} />
+        <input
+          id={id}
+          className="field-input"
+          type={type}
+          value={value}
+          onChange={(e) => {
+            setValue(e.target.value);
+            setError(null);
+          }}
+          autoComplete={autoComplete}
+          aria-invalid={Boolean(error)}
+        />
       </div>
       {error && (
         <p className="form-error profile__error" role="alert">
@@ -247,75 +266,20 @@ function FieldSheet({ open, title, description, label, type = 'text', initial = 
   );
 }
 
-function NameSheet({ open, current, onClose, onSaved }) {
-  return (
-    <FieldSheet
-      open={open}
-      title="Your name"
-      description="Guests see it on your bills."
-      label="Name"
-      initial={current}
-      saveLabel="Save"
-      autoComplete="name"
-      onClose={onClose}
-      save={async (value) => {
-        const name = value.trim().replace(/\s+/g, ' ');
-        if (name.length > 60) return 'Use a name of up to 60 characters.';
-        try {
-          onSaved(await api.rename(name));
-          return null;
-        } catch (err) {
-          return err.code === 'offline' ? "You're offline. Try again." : "Couldn't save your name. Try again.";
-        }
-      }}
-    />
-  );
-}
-
-function EmailSheet({ open, current, onClose, onSaved }) {
-  return (
-    <FieldSheet
-      open={open}
-      title="Your email"
-      description="We'll send a link to the new address. It changes once you open it."
-      label="New email"
-      type="email"
-      initial=""
-      saveLabel="Send the link"
-      autoComplete="email"
-      onClose={onClose}
-      save={async (value) => {
-        const email = value.trim();
-        if (email.toLowerCase() === current.toLowerCase()) return "That's already your email.";
-        const { error } = await supabase.auth.updateUser({ email });
-        if (error) return authMessage(error);
-        onSaved(email);
-        return null;
-      }}
-    />
-  );
-}
-
-/**
- * Current password, then the new one. The current one is checked first (checkPassword);
- * if it's wrong, nothing changes.
- */
+/** Current password, then the new one. The server checks the current one first; if it's wrong, nothing changes. */
 function PasswordSheet({ open, onClose, onSaved }) {
-  const ids = { current: useId(), next: useId() };
   const [current, setCurrent] = useState('');
   const [next, setNext] = useState('');
   const [error, setError] = useState(null); // { field: 'current' | 'next' | null, message }
   const [busy, setBusy] = useState(false);
-  const [wasOpen, setWasOpen] = useState(false);
-  if (open !== wasOpen) {
-    setWasOpen(open);
-    if (open) {
-      setCurrent('');
-      setNext('');
-      setError(null);
-      setBusy(false);
-    }
-  }
+
+  useEffect(() => {
+    if (!open) return;
+    setCurrent('');
+    setNext('');
+    setError(null);
+    setBusy(false);
+  }, [open]);
 
   async function submit() {
     if (next.length < 8) return setError({ field: 'next', message: 'New password must be at least 8 characters.' });
@@ -323,34 +287,14 @@ function PasswordSheet({ open, onClose, onSaved }) {
     setBusy(true);
     setError(null);
     try {
-      const { data } = await supabase.auth.getSession();
-      const email = data.session?.user?.email;
-      if (!email || !(await checkPassword(email, current))) {
-        setBusy(false);
-        return setError({ field: 'current', message: 'Incorrect password.' });
-      }
-      const { error: failed } = await supabase.auth.updateUser({ password: next });
-      if (failed) {
-        setBusy(false);
-        return setError({ field: 'next', message: authMessage(failed) });
-      }
-      onSaved();
-    } catch {
+      await api.changePassword(current, next);
+    } catch (err) {
       setBusy(false);
-      setError({ field: null, message: "Couldn't change your password. Check your connection and try again." });
+      if (err.code === 'wrong_password') return setError({ field: 'current', message: 'Incorrect password.' });
+      return setError({ field: null, message: "Couldn't change your password. Check your connection and try again." });
     }
+    onSaved();
   }
-
-  const field = (key, setter) => ({
-    id: ids[key],
-    className: 'field-input',
-    value: key === 'current' ? current : next,
-    onChange: (e) => {
-      setter(e.target.value);
-      setError(null);
-    },
-    'aria-invalid': error?.field === key,
-  });
 
   return (
     <Sheet
@@ -365,16 +309,35 @@ function PasswordSheet({ open, onClose, onSaved }) {
     >
       <div className="profile__fields">
         <div className="field">
-          <label htmlFor={ids.current} className="field__label">
+          <label htmlFor="password-current" className="field__label">
             Current password
           </label>
-          <PasswordInput {...field('current', setCurrent)} autoComplete="current-password" />
+          <PasswordInput
+            id="password-current"
+            value={current}
+            onChange={(e) => {
+              setCurrent(e.target.value);
+              setError(null);
+            }}
+            aria-invalid={error?.field === 'current'}
+            autoComplete="current-password"
+          />
         </div>
         <div className="field">
-          <label htmlFor={ids.next} className="field__label">
+          <label htmlFor="password-next" className="field__label">
             New password
           </label>
-          <PasswordInput {...field('next', setNext)} autoComplete="new-password" placeholder="At least 8 characters" />
+          <PasswordInput
+            id="password-next"
+            value={next}
+            onChange={(e) => {
+              setNext(e.target.value);
+              setError(null);
+            }}
+            aria-invalid={error?.field === 'next'}
+            autoComplete="new-password"
+            placeholder="At least 8 characters"
+          />
         </div>
       </div>
       {error && (
@@ -396,11 +359,11 @@ function DeleteAccountSheet({ open, onClose, onDeleted }) {
     setError(null);
     try {
       await api.deleteAccount();
-      await onDeleted();
     } catch (err) {
       setBusy(false);
-      setError(err.code === 'offline' ? "You're offline. Try again." : "Couldn't delete your account. Try again.");
+      return setError(offlineOr(err, "Couldn't delete your account. Try again."));
     }
+    onDeleted();
   }
 
   return (

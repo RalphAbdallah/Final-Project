@@ -1,4 +1,4 @@
-import { hueFor, initials } from '../lib/people.js';
+import { hueFor, initials } from '../utils/people.js';
 
 /** Overlapping initials, with "+n" past `max`. Decorative: callers give the names in text. */
 export default function Avatars({ people, max = 3 }) {

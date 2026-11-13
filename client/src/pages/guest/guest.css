@@ -302,6 +302,17 @@
   padding: 4px var(--gutter) env(safe-area-inset-bottom);
 }
 
+/* Each step fades in when it replaces the other (tip -> pay) */
+.pay-flow__step {
+  animation: sheet-fade-in var(--dur-fast) var(--ease-out);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pay-flow__step {
+    animation: none;
+  }
+}
+
 /* The tip step on its own (the payer's tip) */
 .pay-flow__alone {
   padding-bottom: env(safe-area-inset-bottom);

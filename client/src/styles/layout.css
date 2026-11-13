@@ -143,6 +143,33 @@
   text-align: center;
   text-wrap: balance;
   box-shadow: 0 8px 28px oklch(0 0 0 / 0.2);
+  animation: toast-in var(--dur-base) var(--ease-out);
+}
+
+/* Slides down and fades away (components/Toast.jsx removes it right after) */
+.toast.is-leaving {
+  animation: toast-out var(--dur-base) var(--ease-out) forwards;
+}
+
+@keyframes toast-in {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+}
+
+@keyframes toast-out {
+  to {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .toast,
+  .toast.is-leaving {
+    animation-name: none;
+  }
 }
 
 @media (prefers-reduced-transparency: reduce) {

@@ -7,6 +7,7 @@ export default defineConfig({
     port: 5173,
     // Reachable from a phone on the same Wi-Fi, for testing at a real table.
     host: true,
-    proxy: { '/api': 'http://localhost:3001' },
+    // In development, /api requests go to the Express server (server/, port 3000).
+    proxy: { '/api': 'http://localhost:3000' },
   },
 });

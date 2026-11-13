@@ -1,11 +1,12 @@
 import LoadingScreen from '../../components/Loading.jsx';
-import { useEffect, useId, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Icon from '../../components/Icon.jsx';
 import WalletLogo from '../../components/WalletLogo.jsx';
-import { api, cachedProfile } from '../../lib/api.js';
-import { readQrFromFile } from '../../lib/qr.js';
-import { displayLink, WALLET_ORDER, WALLETS } from '../../lib/wallets.js';
+import { api, cachedProfile } from '../../api/client.js';
+import { prepareReceiptPhoto } from '../../utils/images.js';
+import { readQrFromFile } from '../../utils/qr.js';
+import { displayLink, WALLET_ORDER, WALLETS } from '../../utils/wallets.js';
 import './getpaid.css';
 
 /** Get-paid setup (PRD M1): pick wallets, then upload each wallet's receive-money QR code. */
@@ -15,10 +16,12 @@ export default function GetPaid() {
   const [profile, setProfile] = useState(cachedProfile);
   const [failed, setFailed] = useState(false);
   const [step, setStep] = useState('choose');
-  const [picked, setPicked] = useState(() => cachedProfile()?.payouts.map((x) => x.wallet) ?? []);
+  const [picked, setPicked] = useState(() => cachedProfile()?.payouts.map((x) => x.wallet) || []);
   const [index, setIndex] = useState(0);
   const [saving, setSaving] = useState(false);
-  const touched = useRef(false);
+  // Has the payer picked wallets yet? Then a late profile load mustn't reset their picks.
+  // (useState keeps this object between renders; changing its field doesn't re-render.)
+  const [picks] = useState({ touched: false });
 
   useEffect(() => {
     // Ignore a response that lands after this effect was cleaned up, and never
@@ -29,7 +32,7 @@ export default function GetPaid() {
       .then((p) => {
         if (!active) return;
         setProfile(p);
-        if (!touched.current) setPicked(p.payouts.map((x) => x.wallet));
+        if (!picks.touched) setPicked(p.payouts.map((x) => x.wallet));
       })
       .catch(() => active && !cachedProfile() && setFailed(true));
     return () => {
@@ -55,7 +58,7 @@ export default function GetPaid() {
   const current = picked[index];
 
   function toggle(id) {
-    touched.current = true;
+    picks.touched = true;
     setPicked((list) => WALLET_ORDER.filter((w) => (w === id ? !list.includes(id) : list.includes(w))));
   }
 
@@ -190,20 +193,18 @@ function QrUpload({ wallet, savedUrl, onSaved }) {
   const [phase, setPhase] = useState(savedUrl ? 'saved' : 'idle');
   const [offline, setOffline] = useState(false);
   const [preview, setPreview] = useState(null);
-  const inputId = useId();
-  const previewRef = useRef(null);
+  const inputId = `qr-upload-${wallet}`; // one upload per wallet on the page
   const name = WALLETS[wallet].name;
 
-  useEffect(() => () => previewRef.current && URL.revokeObjectURL(previewRef.current), []);
-
   async function onFile(event) {
-    const file = event.target.files?.[0];
+    const file = event.target.files[0];
     event.target.value = '';
     if (!file) return;
 
-    if (previewRef.current) URL.revokeObjectURL(previewRef.current);
-    previewRef.current = URL.createObjectURL(file);
-    setPreview(previewRef.current);
+    // A small copy of the picture to show next to the result.
+    prepareReceiptPhoto(file, 240)
+      .then(setPreview)
+      .catch(() => setPreview(null));
     setPhase('reading');
     setOffline(false);
 

@@ -1,4 +1,4 @@
-import { WALLETS } from '../lib/wallets.js';
+import { WALLETS } from '../utils/wallets.js';
 import Icon from './Icon.jsx';
 
 /** A wallet's app logo in a rounded tile (cash gets an icon). Decorative: the wallet's name is always next to it. */

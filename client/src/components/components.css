@@ -191,6 +191,47 @@
   position: absolute;
   inset: 0;
   background: oklch(0 0 0 / 0.5);
+  animation: sheet-fade-in var(--sheet-time) var(--sheet-ease);
+}
+
+/* Closing: the dim fades faster than the panel travels, so the page is clear first */
+.sheet-dialog.is-closing .sheet-scrim {
+  animation: sheet-fade-out var(--dur-fast) ease-out forwards;
+}
+
+/*
+ * The sheet's motion (Session 6: transitions and keyframes). No bounce: the curve
+ * starts fast and settles gently, like iOS sheets.
+ * Opening: slide up from below. Closing: slide back down (from wherever a drag left it).
+ * Letting go of a short drag: the transition brings it back up.
+ */
+.sheet-dialog {
+  --sheet-time: 0.4s;
+  --sheet-ease: cubic-bezier(0.32, 0.72, 0, 1);
+}
+
+@keyframes sheet-up {
+  from {
+    transform: translateY(100%);
+  }
+}
+
+@keyframes sheet-down {
+  to {
+    transform: translateY(100%);
+  }
+}
+
+@keyframes sheet-fade-in {
+  from {
+    opacity: 0;
+  }
+}
+
+@keyframes sheet-fade-out {
+  to {
+    opacity: 0;
+  }
 }
 
 .sheet-panel {
@@ -208,6 +249,21 @@
   background: var(--day);
   color: var(--ink);
   box-shadow: 0 -8px 40px oklch(0 0 0 / 0.3);
+  animation: sheet-up var(--sheet-time) var(--sheet-ease);
+  transition:
+    transform 0.3s var(--sheet-ease),
+    box-shadow var(--dur-fast) ease-out;
+}
+
+/* Following the finger: no transition, or it would lag behind */
+.sheet-panel.is-dragging {
+  transition: none;
+}
+
+/* Its upward shadow fades with the dim, so no dark band lingers over the page */
+.sheet-panel.is-closing {
+  animation: sheet-down var(--sheet-time) var(--sheet-ease) forwards;
+  box-shadow: 0 -8px 40px oklch(0 0 0 / 0);
 }
 
 .sheet-handle {
@@ -265,8 +321,40 @@
   padding: var(--space-sm) var(--gutter) calc(var(--space-lg) + env(safe-area-inset-bottom));
 }
 
+/* The count pops in when it changes (the key changes, so the animation replays) */
+.stepper__value {
+  animation: stepper-pop var(--dur-base) cubic-bezier(0.32, 0.72, 0, 1);
+}
+
+@keyframes stepper-pop {
+  from {
+    opacity: 0;
+    transform: scale(0.6);
+  }
+}
+
+/* Long amounts get smaller to fit the column: about 0.62em per character */
+.amount__fit {
+  display: inline-flex;
+  align-items: baseline;
+  font-size: min(1em, calc((min(100vw, var(--column)) - 2 * var(--gutter)) / (var(--chars, 1) * 0.62)));
+}
+
 @media (prefers-reduced-motion: reduce) {
   .stepper__button {
     transition: none;
+  }
+
+  .stepper__value {
+    animation: none;
+  }
+
+  /* Sheets fade instead of sliding */
+  .sheet-panel {
+    animation-name: sheet-fade-in;
+  }
+
+  .sheet-panel.is-closing {
+    animation-name: sheet-fade-out;
   }
 }

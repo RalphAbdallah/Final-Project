@@ -1,21 +1,21 @@
 import QRCode from 'qrcode';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import Amount from '../../components/Amount.jsx';
 import Icon from '../../components/Icon.jsx';
-import { api, cachedBill, cachedProfile } from '../../lib/api.js';
-import { copyText } from '../../lib/clipboard.js';
+import { api, cachedBill, cachedProfile } from '../../api/client.js';
+import { copyText } from '../../utils/clipboard.js';
 import './share.css';
 
 /** Share screen (PRD M4): a big QR code on the payer's phone, plus Copy link and the share sheet. */
 export default function ShareBill() {
   const { id } = useParams();
   // The bill (or the dashboard) already has the name, total and link: the QR code shows at once, then refreshes.
-  const [bill, setBill] = useState(() => cachedBill(id)?.bill ?? cachedProfile()?.bills?.find((b) => b.id === id) ?? null);
+  const [bill, setBill] = useState(() => cachedBill(id)?.bill || cachedProfile()?.bills?.find((b) => b.id === id) || null);
   const [failed, setFailed] = useState(false);
   const [qr, setQr] = useState('');
+  // When the link was last copied (a time), or false. "Link copied" shows for 2.4 s.
   const [copied, setCopied] = useState(false);
-  const timer = useRef(null);
 
   useEffect(() => {
     let active = true;
@@ -25,24 +25,28 @@ export default function ShareBill() {
       .catch(() => active && setFailed(true));
     return () => {
       active = false;
-      clearTimeout(timer.current);
     };
   }, [id]);
+
+  useEffect(() => {
+    if (!copied) return;
+    const timer = setTimeout(() => setCopied(false), 2400);
+    return () => clearTimeout(timer);
+  }, [copied]);
 
   const link = bill ? `${window.location.origin}/b/${bill.shareToken}` : '';
 
   useEffect(() => {
     if (!link) return;
-    QRCode.toString(link, { type: 'svg', margin: 0, errorCorrectionLevel: 'M', color: { dark: '#111111', light: '#ffffff' } })
+    // The QR code as a picture (a data URL) an <img> can show.
+    QRCode.toDataURL(link, { width: 640, margin: 0, errorCorrectionLevel: 'M', color: { dark: '#111111', light: '#ffffff' } })
       .then(setQr)
       .catch(() => setQr(''));
   }, [link]);
 
   async function copyLink() {
     const ok = await copyText(link);
-    setCopied(ok);
-    clearTimeout(timer.current);
-    if (ok) timer.current = setTimeout(() => setCopied(false), 2400);
+    setCopied(ok ? Date.now() : false);
   }
 
   async function share() {
@@ -110,7 +114,11 @@ export default function ShareBill() {
       </div>
 
       <figure className="qr-card">
-        <div className="qr-card__code" role="img" aria-label="QR code with the link to this bill" dangerouslySetInnerHTML={{ __html: qr }} />
+        {qr ? (
+          <img className="qr-card__code" src={qr} alt="QR code with the link to this bill" />
+        ) : (
+          <div className="qr-card__code" />
+        )}
         <figcaption className="qr-card__caption">Friends scan this with their phone camera to claim what they had.</figcaption>
       </figure>
 

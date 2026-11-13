@@ -1,15 +1,15 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import Amount from '../../components/Amount.jsx';
 import Icon from '../../components/Icon.jsx';
 import ItemRow, { myMax } from '../../components/ItemRow.jsx';
 import StatusChip from '../../components/StatusChip.jsx';
 import { useToast } from '../../components/Toast.jsx';
-import { api, cachedGuestBill, guestTokens } from '../../lib/api.js';
-import { formatDate } from '../../lib/dates.js';
-import { extrasLabel, formatMoney } from '../../lib/money.js';
-import { hueFor, initials } from '../../lib/people.js';
-import { previewClaim } from '../../lib/preview.js';
+import { api, cachedGuestBill, guestTokens } from '../../api/client.js';
+import { formatDate } from '../../utils/dates.js';
+import { extrasLabel, formatMoney } from '../../utils/money.js';
+import { hueFor, initials } from '../../utils/people.js';
+import { previewClaim } from '../../utils/preview.js';
 import PayFlow from './PayFlow.jsx';
 import './guest.css';
 
@@ -18,7 +18,7 @@ const POLL_MS = 5000;
 export default function GuestBill() {
   const { shareToken } = useParams();
   const [token, setToken] = useState(() => guestTokens.get(shareToken));
-  // Reopening the link shows the last copy at once (lib/api.js cache), refreshed right
+  // Reopening the link shows the last copy at once (api/client.js cache), refreshed right
   // behind it. Without a guest token on this phone, it's the not-joined view.
   const [view, setView] = useState(() => {
     const last = cachedGuestBill(shareToken);
@@ -27,15 +27,17 @@ export default function GuestBill() {
   const [phase, setPhase] = useState(() => (cachedGuestBill(shareToken) ? 'ready' : 'loading'));
   const [sheet, setSheet] = useState(null);
   const [toast, showToast] = useToast();
-  const joinInput = useRef(null);
-  const latest = useRef(0);
-  const inflight = useRef(0);
+  // Request bookkeeping that shouldn't re-render: useState keeps this same object between
+  // renders. `latest` numbers each request, so only the newest answer is shown; `inflight`
+  // counts saves still running, so the refresh waits for them.
+  const [requests] = useState({ latest: 0, inflight: 0 });
 
   const load = useCallback(async () => {
-    const id = ++latest.current;
+    requests.latest += 1;
+    const id = requests.latest;
     try {
       const next = await api.bill(shareToken, token);
-      if (id !== latest.current) return;
+      if (id !== requests.latest) return;
       if (token && !next.me) {
         guestTokens.clear(shareToken);
         setToken(null);
@@ -43,29 +45,30 @@ export default function GuestBill() {
       setView(next);
       setPhase('ready');
     } catch (err) {
-      if (id !== latest.current) return;
+      if (id !== requests.latest) return;
       if (err.status === 404) setPhase('missing');
       else setPhase((p) => (p === 'ready' ? p : 'error'));
     }
-  }, [shareToken, token]);
+  }, [shareToken, token, requests]);
 
   useEffect(() => {
     load();
     const timer = setInterval(() => {
-      if (document.visibilityState === 'visible' && inflight.current === 0) load();
+      if (document.visibilityState === 'visible' && requests.inflight === 0) load();
     }, POLL_MS);
     return () => clearInterval(timer);
-  }, [load]);
+  }, [load, requests]);
 
   /** Runs a change, shows `optimistic` right away, keeps only the newest answer. Returns null on failure. */
   const mutate = useCallback(
     async (request, optimistic) => {
-      const id = ++latest.current;
+      requests.latest += 1;
+      const id = requests.latest;
       if (optimistic) setView(optimistic);
-      inflight.current += 1;
+      requests.inflight += 1;
       try {
         const next = await request();
-        if (id === latest.current) setView(next);
+        if (id === requests.latest) setView(next);
         return next;
       } catch (err) {
         if (err.code === 'not_joined') {
@@ -84,10 +87,10 @@ export default function GuestBill() {
         load();
         return null;
       } finally {
-        inflight.current -= 1;
+        requests.inflight -= 1;
       }
     },
-    [load, shareToken, showToast],
+    [load, shareToken, showToast, requests],
   );
 
   if (phase === 'loading') return <LoadingBill />;
@@ -116,7 +119,7 @@ export default function GuestBill() {
   const money = (minor) => formatMoney(minor, currency);
   const extras = extrasLabel(bill);
   // "Pay Ralph", not "Pay Ralph Abdallah"
-  const payerFirst = payer.name.trim().split(/\s+/)[0];
+  const payerFirst = payer.name.split(' ')[0];
   const memberById = new Map(members.map((m) => [m.id, m]));
   const payerMember = members.find((m) => m.isPayer);
   const claimed = items.reduce((acc, i) => acc + Math.min(i.claimedUnits, i.quantity), 0);
@@ -127,7 +130,7 @@ export default function GuestBill() {
     try {
       const res = await api.join(shareToken, name);
       guestTokens.set(shareToken, res.guestToken);
-      latest.current += 1;
+      requests.latest += 1;
       setView(res);
       setToken(res.guestToken);
       return null;
@@ -138,7 +141,7 @@ export default function GuestBill() {
 
   function leave() {
     guestTokens.clear(shareToken);
-    latest.current += 1;
+    requests.latest += 1;
     setView((v) => ({ ...v, me: null, items: v.items.map((i) => ({ ...i, myUnits: 0, myShare: 0 })) }));
     setToken(null);
   }
@@ -187,7 +190,7 @@ export default function GuestBill() {
       <header className="top on-night">
         <div className="top__bar">
           <div className="venue">
-            <span className="venue__avatar" style={{ '--hue': hueFor(payerMember?.id ?? payer.name) }} aria-hidden="true">
+            <span className="venue__avatar" style={{ '--hue': hueFor(payerMember?.id || payer.name) }} aria-hidden="true">
               {initials(payer.name)}
             </span>
             <div className="venue__text">
@@ -221,7 +224,7 @@ export default function GuestBill() {
       </header>
 
       <main className="surface on-day">
-        {!me && <JoinForm inputRef={joinInput} onJoin={join} />}
+        {!me && <JoinForm onJoin={join} />}
 
         <div className="surface__head">
           <h2 className="surface__title">Items</h2>
@@ -298,7 +301,7 @@ export default function GuestBill() {
               </span>
               <div className="paid__text">
                 <p className="paid__title num">
-                  {me.status === 'confirmed' ? 'Paid' : 'Marked as paid'} · {money(me.paidAmount ?? me.due)}
+                  {me.status === 'confirmed' ? 'Paid' : 'Marked as paid'} · {money(me.paidAmount === null ? me.due : me.paidAmount)}
                 </p>
                 {/* Paid: just "Paid · $X" (team choice). The older marked-paid state still explains itself. */}
                 {me.status !== 'confirmed' && <p className="paid__sub">Waiting for {payerFirst} to confirm.</p>}
@@ -344,7 +347,7 @@ const JOIN_ERRORS = {
   offline: "You're offline. Check your connection and try again.",
 };
 
-function JoinForm({ inputRef, onJoin }) {
+function JoinForm({ onJoin }) {
   const [name, setName] = useState('');
   const [error, setError] = useState(null);
   const [busy, setBusy] = useState(false);
@@ -354,7 +357,7 @@ function JoinForm({ inputRef, onJoin }) {
     const clean = name.trim();
     if (!clean) {
       setError('empty');
-      inputRef.current?.focus();
+      document.getElementById('join-name').focus();
       return;
     }
     setBusy(true);
@@ -369,7 +372,7 @@ function JoinForm({ inputRef, onJoin }) {
       : error === 'too_many_requests'
         ? 'A lot of people just joined this bill. Try again in a few minutes.'
         : error
-        ? (JOIN_ERRORS[error] ?? "Couldn't join. Try again.")
+        ? (JOIN_ERRORS[error] || "Couldn't join. Try again.")
         : null;
 
   return (
@@ -379,7 +382,6 @@ function JoinForm({ inputRef, onJoin }) {
           Your name
         </label>
         <input
-          ref={inputRef}
           id="join-name"
           className="field-input"
           value={name}

@@ -1,18 +1,19 @@
 import LoadingScreen from '../components/Loading.jsx';
-import { useEffect, useId, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import Icon from '../components/Icon.jsx';
-import { api, cachedProfile } from '../lib/api.js';
-import { useAuth } from '../lib/auth.jsx';
-import { supabase } from '../lib/supabase.js';
-import { formatDate } from '../lib/dates.js';
-import { formatMoney } from '../lib/money.js';
+import { api, cachedProfile } from '../api/client.js';
+import { useAuth } from '../auth/AuthContext.jsx';
+import { formatDate } from '../utils/dates.js';
+import { prepareReceiptPhoto } from '../utils/images.js';
+import { clearNewBill, saveNewBill } from '../utils/newBillStore.js';
+import { formatMoney } from '../utils/money.js';
 import './Home.css';
 
 /** What's still owed across bills, per currency: "$45.20", or "$45.20 · LBP 1,200,000". */
 function owedText(bills) {
   const owed = {};
-  for (const b of bills) owed[b.currency] = (owed[b.currency] ?? 0) + b.outstanding;
+  for (const b of bills) owed[b.currency] = (owed[b.currency] || 0) + b.outstanding;
   const parts = Object.entries(owed)
     .filter(([, minor]) => minor > 0)
     .map(([currency, minor]) => formatMoney(minor, currency));
@@ -21,9 +22,8 @@ function owedText(bills) {
 
 /** Landing for visitors; the payer's dashboard once logged in (PRD M10). */
 export default function Home() {
-  const { session } = useAuth();
-  if (session === undefined) return <LoadingScreen />;
-  return session ? <PayerHome /> : <Landing />;
+  const { token } = useAuth();
+  return token ? <PayerHome /> : <Landing />;
 }
 
 function Landing() {
@@ -57,8 +57,7 @@ function Landing() {
 
 function PayerHome() {
   const navigate = useNavigate();
-  const cameraId = useId();
-  const cameraInput = useRef(null);
+  const { logout } = useAuth();
   // Start from the remembered profile (instant when coming back), then refresh it.
   const [profile, setProfile] = useState(cachedProfile);
   const [failed, setFailed] = useState(false);
@@ -68,7 +67,7 @@ function PayerHome() {
   // props can't catch it: listen on the input itself. Re-attached once the
   // profile has loaded and the button exists.)
   useEffect(() => {
-    const input = cameraInput.current;
+    const input = document.getElementById('new-bill-camera');
     if (!input) return undefined;
     const onCancel = () => navigate('/bills/new');
     input.addEventListener('cancel', onCancel);
@@ -102,7 +101,7 @@ function PayerHome() {
             Try again
           </button>
           {/* A way out, so nobody is stuck here: back to the start, logged out. */}
-          <button type="button" className="pill pill--night pill--block" onClick={() => supabase.auth.signOut()}>
+          <button type="button" className="pill pill--night pill--block" onClick={logout}>
             Log out
           </button>
         </div>
@@ -122,7 +121,7 @@ function PayerHome() {
         </Link>
       </div>
       <div className="home__body">
-        <h1 className="home__title">Hi {profile.name.trim().split(/\s+/)[0]}.</h1>
+        <h1 className="home__title">Hi {profile.name.split(' ')[0]}.</h1>
       </div>
       {profile.bills.length > 0 && (
         <section className="home__bills" aria-labelledby="your-bills">
@@ -163,19 +162,26 @@ function PayerHome() {
       <div className="home__actions">
         {/* Opens the camera right away; the photo is handed to the new-bill screen.
             Closing the camera instead also goes there (see the cancel listener above). */}
-        <label className="pill pill--primary pill--block" htmlFor={cameraId}>
+        <label className="pill pill--primary pill--block" htmlFor="new-bill-camera">
           New bill
           <input
-            ref={cameraInput}
-            id={cameraId}
+            id="new-bill-camera"
             type="file"
             accept="image/*"
             capture="environment"
             className="visually-hidden"
-            onChange={(event) => {
-              const photos = [...(event.target.files ?? [])];
+            onChange={async (event) => {
+              const files = [...event.target.files];
               event.target.value = '';
-              if (photos.length) navigate('/bills/new', { state: { photos } });
+              if (files.length === 0) return;
+              // A fresh bill with this photo: the new-bill screen picks it up from the store.
+              clearNewBill();
+              try {
+                saveNewBill('photos', [{ id: `photo-${Date.now()}`, url: await prepareReceiptPhoto(files[0]) }]);
+              } catch {
+                // couldn't open the photo: the new-bill screen opens empty, to take it again
+              }
+              navigate('/bills/new');
             }}
           />
         </label>
