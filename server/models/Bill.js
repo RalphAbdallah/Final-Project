@@ -56,4 +56,8 @@ const billSchema = new mongoose.Schema(
   { timestamps: true, optimisticConcurrency: true },
 );
 
+// The dashboard's query, find({ userId }).sort({ createdAt: -1 }), in the same field order,
+// so MongoDB reads only this payer's bills, already sorted (Session 22, tests/indexes.test.js).
+billSchema.index({ userId: 1, createdAt: -1 });
+
 export const Bill = mongoose.model('Bill', billSchema);

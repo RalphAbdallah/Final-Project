@@ -12,4 +12,7 @@ const photoSchema = new mongoose.Schema(
   { timestamps: true },
 );
 
+// A bill's photos are found by billId (GET /api/me/bills/:id/photos).
+photoSchema.index({ billId: 1 });
+
 export const Photo = mongoose.model('Photo', photoSchema);

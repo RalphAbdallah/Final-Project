@@ -5,7 +5,9 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "dependencies": {
     "jsqr": "^1.4.0",
@@ -15,8 +17,13 @@
     "react-router-dom": "^7.18.5"
   },
   "devDependencies": {
+    "@testing-library/jest-dom": "^7.0.1",
+    "@testing-library/react": "^16.3.3",
+    "@testing-library/user-event": "^14.6.10",
     "@vitejs/plugin-react": "^6.2.1",
-    "vite": "^8.3.5"
+    "jsdom": "^31.0.1",
+    "vite": "^8.3.5",
+    "vitest": "^5.1.0"
   },
   "optionalDependencies": {
     "@rolldown/binding-win32-x64-msvc": "^1.2.16"

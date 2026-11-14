@@ -10,4 +10,10 @@ export default defineConfig({
     // In development, /api requests go to the Express server (server/, port 3000).
     proxy: { '/api': 'http://localhost:3000' },
   },
+  // Tests (Session 22): run in a fake browser page (jsdom), with the jest-dom matchers.
+  test: {
+    environment: 'jsdom',
+    globals: true, // auto cleanup between tests
+    setupFiles: './src/setupTests.js',
+  },
 });

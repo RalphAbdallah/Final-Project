@@ -1,0 +1,6 @@
+# Search engines may read the home page, but not bills: guest links (/b/...) carry the
+# bill's secret token, and /bills/... are the payer's private screens.
+User-agent: *
+Disallow: /b/
+Disallow: /bills/
+Allow: /
