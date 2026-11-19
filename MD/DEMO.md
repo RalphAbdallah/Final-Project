@@ -1,13 +1,12 @@
 # splIT: Demo and presentation (Session 24)
 
-5 to 8 minutes, then Q&A. The brief asks for four things, in this order: **the problem**, **a live walkthrough of the key features**, **one technical challenge we overcame**, and **what we'd build next**. The app runs on the laptop (deployment is skipped for now, with the instructor's OK).
+5 to 8 minutes, then Q&A. The brief asks for four things, in this order: **the problem**, **a live walkthrough of the key features**, **one technical challenge we overcame**, and **what we'd build next**. Present from the live site, https://receipt-app-split.vercel.app: the guests' phones just need internet (any network, mobile data too), and the share links work over HTTPS.
 
 ## Before the session (15 minutes before)
 
-- [ ] `server/.env` has `MONGODB_URI`, `JWT_SECRET` and `OPENAI_API_KEY`. Check the OpenAI credit. Without a key, use **Try a sample bill** instead of a photo.
-- [ ] Laptop and every demo phone on the **same Wi-Fi** (a phone hotspot is the safest: classroom Wi-Fi often blocks phone-to-laptop traffic).
-- [ ] **Atlas → Network Access: allow the network you'll present on** (Add Current IP Address on the classroom or hotspot network, or `0.0.0.0/0`). A new network isn't allowed by default: the server stops with "DB connection failed" and the app shows `http proxy error ... ECONNREFUSED`.
-- [ ] Run `start.bat` (or `npm run dev:server` and `npm run dev:client`). The server window must say `connected to MongoDB`. Open the **Network** address Vite prints (e.g. `http://192.168.x.x:5173`) on the laptop, so the QR code points at an address the phones can reach.
+- [ ] **Wake the API:** open https://split-api-vpsr.onrender.com/api/health and wait for `{"ok":true}`. Render's free plan sleeps when idle, and the first request can take about 50 seconds. Open it again right before presenting.
+- [ ] Check the OpenAI credit (reading photos needs it). If reading fails, use a bill made earlier.
+- [ ] **Backup, the local copy:** if the live site has a problem, run `start.bat` (Atlas already allows any address) and open the **Network** address Vite prints, with the laptop and phones on the same Wi-Fi or a phone hotspot.
 - [ ] Log in to the payer account. Have one bill already made (the backup if reading is slow), and the paper receipt (or `Receipts/Castle.jpeg` on screen) ready to photograph.
 - [ ] Two teammates' phones ready to scan, with their browser open.
 - [ ] `npm test` passes (82 server + 10 client tests), in case we're asked to show tests.
@@ -57,7 +56,7 @@ Backup challenge, if asked for another: **rounding**. Tax and service are spread
 - **Live updates** with Socket.io: today screens poll every few seconds; a room per bill would push each claim instantly.
 - **USD and LBP side by side**: the payer sets the rate; everyone sees their share in both.
 - **Payment proof**: attach the Whish or OMT transfer screenshot when paying.
-- **Deploying it** (Vercel + Render are already set up in the README) and a real-phone accessibility pass.
+- **A paid server plan** (no 50-second wake-up) and a real-phone accessibility pass.
 
 ## Q&A: likely questions
 
@@ -71,4 +70,5 @@ Backup challenge, if asked for another: **rounding**. Tax and service are spread
 | Where are the secrets? | `server/.env`, git-ignored. The OpenAI key never reaches the browser; only `VITE_API_URL` is in the client. |
 | What do the tests cover? | Server: the API end to end with Supertest on an in-memory MongoDB, plus the split engine. Client: React Testing Library tests of the claim stepper and Home. |
 | Why MongoDB? | A bill with its items, members and claims is read and written as one document, which is how every screen uses it. |
-| Why isn't it deployed? | The instructor allowed us to skip it for now; the README has the Vercel and Render steps. |
+| How is it deployed? | Front end on Vercel, API on Render, database on MongoDB Atlas. Secrets are set in Render's environment settings, never in the repo; the front end only knows the API's address (`VITE_API_URL`). |
+| Why was the first load slow? | Render's free plan sleeps after 15 minutes idle and takes up to ~50 seconds to wake. A paid plan stays awake. |

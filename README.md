@@ -4,7 +4,11 @@ Split a shared receipt in under a minute. One person pays and photographs the bi
 
 Capstone project for 020WBPES3 Web Programming, ESIB. Team: Ralph Abdallah, Charbel Harb, Jason Khadra.
 
-> **Running it:** the app runs locally (instructions below). Deployment to Vercel and Render is set up (see [Deploying](#deploying)) but isn't live: the instructor allowed us to skip it for now.
+**Live:**
+- App: https://receipt-app-split.vercel.app
+- API: https://split-api-vpsr.onrender.com (health check: [`/api/health`](https://split-api-vpsr.onrender.com/api/health))
+
+The API runs on Render's free plan, which sleeps when idle: the first request after a while can take about 50 seconds. To run it on your own computer instead, see [Setup](#setup).
 
 ## Features
 
@@ -27,7 +31,7 @@ Capstone project for 020WBPES3 Web Programming, ESIB. Team: Ralph Abdallah, Char
 | Auth | bcrypt password hashes and JWT tokens (`Authorization: Bearer ...`) |
 | Third-party API | OpenAI (receipt reading), called from the server so the key stays secret |
 | Tests | Server: Vitest, Supertest and an in-memory MongoDB. Client: Vitest and React Testing Library (jsdom) |
-| Hosting (prepared) | Vercel (client), Render (server) |
+| Hosting | Vercel (client), Render (server), MongoDB Atlas (database) |
 
 ## Architecture
 
@@ -143,7 +147,7 @@ Errors come back as JSON with a code: `{ "error": "not_enough_left" }`, with 400
 
 ## Deploying
 
-Prepared, not live yet (see the note at the top).
+Live at the addresses at the top.
 
-- **Server (Render):** root directory `server`, start command `npm start`. Set `MONGODB_URI`, `JWT_SECRET`, `CLIENT_ORIGIN` (the Vercel address) and `OPENAI_API_KEY`. In Atlas, allow access from anywhere (`0.0.0.0/0`), since Render's addresses change.
+- **Server (Render):** root directory `server`, build command `npm install`, start command `npm start`. Set `MONGODB_URI`, `JWT_SECRET`, `CLIENT_ORIGIN` (the Vercel address, no `/` at the end), `OPENAI_API_KEY` and `OPENAI_MODEL`. In Atlas, allow access from anywhere (`0.0.0.0/0`), since Render's addresses change. A missing `MONGODB_URI` or `JWT_SECRET` makes the server stop at startup ("Exited with status 1").
 - **Client (Vercel):** root directory `client`. Set `VITE_API_URL` to the Render address. `client/vercel.json` sends every path to the app, so bill links work.

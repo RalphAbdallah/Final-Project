@@ -9,7 +9,7 @@
 
 **Changed 12 November 2026 (team decision):** the app is rewritten with only the course's code (the teacher requires the team to understand every line). Supabase is gone: payers sign up and log in with our own Express routes (bcrypt hashes, JWT), the database is MongoDB (Mongoose), and receipt photos are stored in MongoDB as base64 text, shown only to the bill's payer. An email change applies at once (no confirmation link). Where this document says Supabase or Postgres, read MongoDB and our own auth.
 
-**Changed 19 November 2026:** deployment is skipped for now (the instructor's OK); the app is graded running locally. Without an OpenAI key, payers can still try everything except reading photos through Home's "Try a sample bill".
+**Changed 19 November 2026:** deployed on the new stack (front end https://receipt-app-split.vercel.app, API https://split-api-vpsr.onrender.com). Without an OpenAI key, payers can still try everything except reading photos through Home's "Try a sample bill".
 
 Anything marked **(proposed)** goes beyond the proposal and needs team agreement. Open questions, each with a proposed default so work isn't blocked, are in [§13](#13-open-questions).
 
@@ -45,7 +45,7 @@ Ate at the table. Wants to find what they had, see exactly what they owe, and pa
 - The full flow runs live on real phones: payer creates a bill, three guests join by QR, claim items (one person per unit, including units of the same dish), pay, and the payer confirms.
 - All eleven must-haves work end to end.
 - The split engine has unit tests covering the rounding edge cases in §8.
-- Deployed: front end on Vercel, API on Render. (Skipped for now with the instructor's OK, 19 November 2026; runs locally.)
+- Deployed: front end on Vercel, API on Render. (Done 19 November 2026.)
 
 ## 5. Scope
 
