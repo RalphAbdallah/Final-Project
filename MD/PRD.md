@@ -9,6 +9,8 @@
 
 **Changed 12 November 2026 (team decision):** the app is rewritten with only the course's code (the teacher requires the team to understand every line). Supabase is gone: payers sign up and log in with our own Express routes (bcrypt hashes, JWT), the database is MongoDB (Mongoose), and receipt photos are stored in MongoDB as base64 text, shown only to the bill's payer. An email change applies at once (no confirmation link). Where this document says Supabase or Postgres, read MongoDB and our own auth.
 
+**Changed 19 November 2026:** deployment is skipped for now (the instructor's OK); the app is graded running locally. Without an OpenAI key, payers can still try everything except reading photos through Home's "Try a sample bill".
+
 Anything marked **(proposed)** goes beyond the proposal and needs team agreement. Open questions, each with a proposed default so work isn't blocked, are in [§13](#13-open-questions).
 
 ---
@@ -43,7 +45,7 @@ Ate at the table. Wants to find what they had, see exactly what they owe, and pa
 - The full flow runs live on real phones: payer creates a bill, three guests join by QR, claim items (one person per unit, including units of the same dish), pay, and the payer confirms.
 - All eleven must-haves work end to end.
 - The split engine has unit tests covering the rounding edge cases in §8.
-- Deployed: front end on Vercel, API on Render.
+- Deployed: front end on Vercel, API on Render. (Skipped for now with the instructor's OK, 19 November 2026; runs locally.)
 
 ## 5. Scope
 
@@ -293,9 +295,9 @@ The five tables in the proposal stay, with the changes below: `users` (payers on
 - `bills.card_paid_at` (timestamptz, nullable): set when the payer taps Card paid, which locks tips (Q16).
 
 **Access model**
-- **Payer requests:** the Supabase access token identifies `users.id`; the bill must belong to that user.
+- **Payer requests:** our own JWT (`Authorization: Bearer`) identifies the user; the bill must belong to that user (another payer's bill is a 404).
 - **Guest requests:** the share token in the path picks the bill; the `X-Guest-Token` header picks the member.
-- The browser never queries Postgres. Express is the only path to data; the client uses Supabase only for authentication.
+- The browser never reaches MongoDB. Express is the only path to data, including logging in.
 
 ## 11. Non-functional requirements
 
@@ -306,10 +308,10 @@ The five tables in the proposal stay, with the changes below: `users` (payers on
 **Security and privacy**
 - Share and guest tokens come from a cryptographic random source, at least 128 bits.
 - The payer's wallet links are shown only to guests who have joined that bill, and only links on that wallet's own domain are accepted.
-- All input validated on the server; join and claim endpoints rate-limited (built 5 November 2026: joins 20 per bill and 30 per address per 10 minutes; claims 60 per person and 300 per address per minute; over the limit returns 429 with how long to wait).
+- All input validated on the server; join and claim endpoints rate-limited (built 5 November 2026: joins 20 per bill and 30 per address per 10 minutes; claims 60 per person and 300 per address per minute; over the limit returns 429 with how long to wait). Logging in is limited too (added 19 November 2026): 10 tries per email, and 30 logins and sign-ups per address, per 15 minutes.
 - Receipts and proof screenshots in private storage, served through short-lived signed URLs.
 - Secrets live only in server environment variables. The OpenAI key never reaches the browser.
-- **AI spend is capped** (added 3 November 2026): every receipt read that reaches OpenAI is recorded with its tokens (`ai_usage`). A payer gets at most 3 reads an hour, 10 a day and 150,000 tokens a day; all payers together get 250,000 tokens a day, the backstop against many sign-ups (lowered 5 November 2026; was 10, 30 and 2,000,000). One read at a time per payer. Limits are checked before photos are accepted, and the payer is told when they can try again. Failed reads count, since they still cost. All limits can be changed in `backend/.env`. A monthly budget cap should also be set in the OpenAI dashboard.
+- **AI spend is capped** (added 3 November 2026): every receipt read that reaches OpenAI is recorded with its tokens (`ai_usage`). A payer gets at most 3 reads an hour, 10 a day and 150,000 tokens a day; all payers together get 250,000 tokens a day, the backstop against many sign-ups (lowered 5 November 2026; was 10, 30 and 2,000,000). One read at a time per payer. Limits are checked before photos are accepted, and the payer is told when they can try again. Failed reads count, since they still cost. All limits can be changed in `server/.env`. A monthly budget cap should also be set in the OpenAI dashboard.
 - HTTPS everywhere (the clipboard API requires it).
 
 **Accessibility.** WCAG 2.2 AA. Touch targets at least 44 × 44 px. The core guest flow works with VoiceOver and TalkBack. Honors `prefers-reduced-motion` and `prefers-reduced-transparency`.

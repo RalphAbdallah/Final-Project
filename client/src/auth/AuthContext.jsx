@@ -59,6 +59,11 @@ export function authErrorMessage(err) {
     invalid_email: 'Check your email address and try again.',
   };
   if (messages[err.code]) return messages[err.code];
+  // Too many tries (server/middleware/rateLimits.js): say how long to wait, in minutes.
+  if (err.code === 'too_many_requests') {
+    const minutes = Math.max(1, Math.ceil((err.data.retryAfter || 60) / 60));
+    return `Too many tries. Try again in ${minutes === 1 ? '1 minute' : `${minutes} minutes`}.`;
+  }
   if (err.code === 'offline') return "You're offline. Check your connection and try again.";
   return 'Something went wrong. Try again.';
 }

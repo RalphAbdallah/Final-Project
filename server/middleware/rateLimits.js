@@ -1,6 +1,7 @@
 /**
  * Limits on joining a bill and claiming items (PRD §11), so nobody with a bill's link can
- * flood it with fake guests or hammer the claim buttons. Past a limit: 429 with how many
+ * flood it with fake guests or hammer the claim buttons, and on logging in and signing up,
+ * so nobody can guess a password by trying thousands. Past a limit: 429 with how many
  * seconds to wait.
  *
  * Counted in memory: the API runs as one process, and a restart only resets the counts.
@@ -17,6 +18,8 @@ export function rateLimitsFromEnv(env = process.env) {
     joinPerAddress: { limit: num('RATE_JOIN_PER_ADDRESS', 30), windowMs: 10 * MINUTE },
     claimPerPerson: { limit: num('RATE_CLAIM_PER_PERSON', 60), windowMs: MINUTE },
     claimPerAddress: { limit: num('RATE_CLAIM_PER_ADDRESS', 300), windowMs: MINUTE },
+    loginPerEmail: { limit: num('RATE_LOGIN_PER_EMAIL', 10), windowMs: 15 * MINUTE },
+    authPerAddress: { limit: num('RATE_AUTH_PER_ADDRESS', 30), windowMs: 15 * MINUTE },
   };
 }
 
@@ -56,13 +59,22 @@ function limitBy(checks) {
 function createLimiters(limits) {
   if (!limits) {
     const pass = (req, res, next) => next();
-    return { join: pass, claim: pass, payerClaim: pass };
+    return { join: pass, claim: pass, payerClaim: pass, login: pass, signup: pass };
   }
   const joinPerBill = createCounter(limits.joinPerBill);
   const joinPerAddress = createCounter(limits.joinPerAddress);
   const claimPerPerson = createCounter(limits.claimPerPerson);
   const claimPerAddress = createCounter(limits.claimPerAddress);
+  const loginPerEmail = createCounter(limits.loginPerEmail);
+  const authPerAddress = createCounter(limits.authPerAddress);
   return {
+    // Logging in: per email (one account can't be guessed at) and per address (one
+    // computer can't try many accounts). Signing up shares the address limit.
+    login: limitBy([
+      [loginPerEmail, (req) => String(req.body.email).trim().toLowerCase()],
+      [authPerAddress, (req) => req.ip],
+    ]),
+    signup: limitBy([[authPerAddress, (req) => req.ip]]),
     // Guests, after loadBill (routes/share.js) has found the bill and the member.
     join: limitBy([
       [joinPerBill, (req) => req.bill.id],

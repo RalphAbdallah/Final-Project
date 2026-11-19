@@ -3,6 +3,9 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { useTestDatabase } from './db.js';
 
 process.env.JWT_SECRET = 'test-secret';
+// Every test signs up two payers from the same address: lift the login/sign-up limit
+// for this file (rateLimits.test.js tests the limit itself).
+process.env.RATE_AUTH_PER_ADDRESS = '100000';
 
 // Stands in for the OpenAI reader: returns what a model would copy off the Castle receipt.
 // Special photo contents make it fail the ways the real one can.
@@ -132,6 +135,19 @@ describe('payer auth', () => {
     expect(res.body).toMatchObject({ name: 'Ralph', email: 'ralph@example.com', payouts: [] });
     expect(res.body.bills).toHaveLength(1);
     expect((await asPayer(request(app).get('/api/me/bills'))).body).toEqual(res.body.bills);
+  });
+
+  it('says whether receipt reading is on, so the app can offer a sample bill instead', async () => {
+    const saved = process.env.OPENAI_API_KEY;
+    try {
+      delete process.env.OPENAI_API_KEY;
+      expect((await asPayer(request(app).get('/api/me'))).body.readingOn).toBe(false);
+      process.env.OPENAI_API_KEY = 'sk-test';
+      expect((await asPayer(request(app).get('/api/me'))).body.readingOn).toBe(true);
+    } finally {
+      if (saved === undefined) delete process.env.OPENAI_API_KEY;
+      else process.env.OPENAI_API_KEY = saved;
+    }
   });
 
   it('renames the payer, on their bills too', async () => {

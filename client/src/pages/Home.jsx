@@ -61,6 +61,18 @@ function PayerHome() {
   // Start from the remembered profile (instant when coming back), then refresh it.
   const [profile, setProfile] = useState(cachedProfile);
   const [failed, setFailed] = useState(false);
+  const [sample, setSample] = useState({ busy: false, error: false });
+
+  // Receipt reading is off on this server (no OpenAI key): make a sample bill and open it.
+  async function openSampleBill() {
+    setSample({ busy: true, error: false });
+    try {
+      const bill = await api.sampleBill();
+      navigate(`/bills/${bill.id}`);
+    } catch {
+      setSample({ busy: false, error: true });
+    }
+  }
 
   // Closing the camera without a photo opens the new-bill screen anyway, where
   // "Choose from photos" picks existing ones. (`cancel` doesn't bubble, so React's
@@ -185,6 +197,17 @@ function PayerHome() {
             }}
           />
         </label>
+        {/* Without an OpenAI key no photo can be read, so offer a ready-made bill to try the rest. */}
+        {profile.readingOn === false && (
+          <button type="button" className="pill pill--night pill--block" onClick={openSampleBill} disabled={sample.busy}>
+            {sample.busy ? 'Making a sample bill…' : 'Try a sample bill'}
+          </button>
+        )}
+        {sample.error && (
+          <p className="form-error" role="alert">
+            Couldn't make the sample bill. Try again.
+          </p>
+        )}
         {/* Payment methods live in Profile (Payment methods → Edit), not here (team choice). */}
       </div>
     </main>

@@ -1,6 +1,6 @@
 # splIT: Build Plan
 
-**Current phase:** course-only rewrite (12 November 2026), then Phase 9 · **Built so far:** everything below, now on MongoDB + Mongoose and bcrypt/JWT login in the slides' capstone architecture (client/ + server/); Supabase removed · **Next task:** MongoDB Atlas cluster + MONGODB_URI, redeploy (Render: root server/; Vercel: root client/), real-phone pass · **Deadline:** Friday 20 November 2026
+**Current phase:** Phase 9 (hardening and demo) · **Built so far:** everything below, on MongoDB + Mongoose and bcrypt/JWT login in the slides' capstone architecture (client/ + server/); capstone requirements checked 19 November 2026 (row 56) · **Deployment:** skipped for now with the instructor's OK; graded locally · **Next task:** rehearse the demo (MD/DEMO.md), push to GitHub with milestone tags, real-phone pass · **Deadline:** Friday 20 November 2026
 
 What to build lives in [PRD.md](PRD.md); how it looks lives in [DESIGN.md](DESIGN.md). This file is the order of work and the record of what's done. The iteration protocol is in [CLAUDE.md](../CLAUDE.md).
 
@@ -14,70 +14,52 @@ What to build lives in [PRD.md](PRD.md); how it looks lives in [DESIGN.md](DESIG
 
 ## Architecture
 
+Current since the course-only rewrite (12 November 2026). The README has the full API table and setup; this is the short version. Phases 0 to 7 below were first built on Supabase and Postgres, so their notes mention `frontend/`, `backend/`, migrations and Supabase: that history is kept as it happened.
+
 ```
 Guest phone ─┐
-             ├──▶ React (Vite) on Vercel ──REST──▶ Express API on Render ──▶ Supabase Postgres
-Payer phone ─┘          │                              │                   Supabase Storage
-                        └── Supabase Auth (payer) ─────┘ verifies token
+             ├──▶ React (Vite), client/ ──REST /api──▶ Express API, server/ ──Mongoose──▶ MongoDB
+Payer phone ─┘     JWT in localStorage                   requireAuth (JWT)       └──HTTPS──▶ OpenAI (receipt reading)
 ```
 
-### Repo layout (proposed)
+Deployment (Vercel for client/, Render for server/) is prepared but not live: the instructor allowed skipping it for now (19 November 2026). The app is graded running locally.
+
+### Repo layout
 
 ```
-frontend/               React + Vite, plain CSS (own node_modules)
-  src/pages/            Home, payer/GetPaid (/get-paid), guest/GuestBill (/b/:shareToken); later auth, dashboard, bill editor, share
-  src/components/       Sheet, Stepper, Amount, Avatars, Toast, StatusChip, Icon, WalletLogo
-  src/lib/              api, money, qr (reads QR images), wallets, people
+client/                 React + Vite, plain CSS (own node_modules)
+  src/api/client.js     apiFetch + one function per request, localStorage cache
+  src/auth/             AuthContext (token, login, signup, logout), RequireAuth
+  src/pages/            Home, auth/, guest/, payer/
+  src/components/       Sheet, Stepper, Amount, Avatars, Toast, StatusChip, Icon, WalletLogo, ItemRow
+  src/utils/            money, dates, split (copy of the server's), qr, images, wallets, people
   src/styles/           tokens.css (from DESIGN.md), base.css, layout.css
-backend/                Node + Express REST API (own node_modules)
-  src/routes/           me (get-paid setup), share (guest); later bills, items
-  src/split/            Split engine: pure functions + tests
-  src/store.js          In-memory data + demo bill until Postgres (P1.1)
-  src/db/migrations/    Numbered .sql files (P1.1)
-inspo/                  Design references (drives DESIGN.md)
-MD/                     PRD.md · PLAN.md · DESIGN.md (+ PRODUCT.md from Phase D)
+server/                 Node + Express REST API (own node_modules)
+  server.js, app.js     dotenv + connect + listen; the app itself (used by the tests)
+  models/               User, Bill (items, members, claims embedded), Photo, AiUsage
+  routes/               auth, me, bills, receipts, share
+  middleware/           requireAuth, logger, rateLimits
+  services/             split engine, views, OpenAI reader, draft math, AI limits, bills
+  tests/                Vitest + Supertest on an in-memory MongoDB
+MD/                     PRD.md · PLAN.md · DESIGN.md · PRODUCT.md · DEMO.md · STUDY_GUIDE.md
 CLAUDE.md               Loads the MD/ docs into every session
-splIT_proposal.md       The submitted proposal (read-only)
 ```
 
 ### Environment variables
 
 | Where | Variable | Purpose |
 | --- | --- | --- |
-| client | `VITE_API_URL` | Express API base URL |
-| client | `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY` | Supabase Auth only |
-| server | `DATABASE_URL` | Postgres connection string |
-| server | `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` | Token verification, Storage |
+| client | `VITE_API_URL` | API address when deployed; empty locally (Vite forwards `/api`) |
+| server | `MONGODB_URI` | MongoDB connection string (Atlas or local) |
+| server | `JWT_SECRET` | Signs login tokens |
 | server | `CLIENT_ORIGIN` | CORS allow-list |
-| server | `OPENAI_API_KEY` | Receipt scanning (N3 only) |
+| server | `OPENAI_API_KEY`, `OPENAI_MODEL` | Receipt reading; empty key = Home offers a sample bill |
+| server | `AI_*`, `RATE_*` | Spend and request limits (`server/.env.example`) |
 
-### API sketch
+### API
 
-**Payer routes** need `Authorization: Bearer <Supabase access token>`.
+See the API table in [README.md](../README.md#api). Payer routes live under `/api/me` (JWT); guest routes under `/api/share/:shareToken` (`X-Guest-Token` once joined).
 
-| Method | Path | Purpose |
-| --- | --- | --- |
-| GET | `/api/me` | Profile; creates the `users` row on first call |
-| PUT | `/api/me` | Update name, wallet phone |
-| GET | `/api/bills` | The payer's bills with collected/outstanding totals |
-| POST | `/api/bills` | Create a bill (generates `share_token`) |
-| GET | `/api/bills/:id` | Bill, items, members, split breakdown |
-| PATCH / DELETE | `/api/bills/:id` | Edit or delete a bill |
-| POST | `/api/bills/:id/items` | Add an item |
-| PATCH / DELETE | `/api/bills/:id/items/:itemId` | Edit or remove an item |
-| PUT / DELETE | `/api/bills/:id/receipt` | Upload, replace or remove the receipt photo |
-| PUT / DELETE | `/api/bills/:id/claims/:itemId` | The payer's own claims (body: `units`) |
-| PATCH | `/api/bills/:id/members/:memberId` | Payer status change: confirm, not received, undo; the payer's own tip |
-| DELETE | `/api/bills/:id/members/:memberId` | Remove a member |
-
-**Guest routes** use the share token in the path, and the `X-Guest-Token` header once joined.
-
-| Method | Path | Purpose |
-| --- | --- | --- |
-| GET | `/api/share/:shareToken` | Public bill view, plus the guest's own share when a token is sent |
-| POST | `/api/share/:shareToken/join` | Join with a name; returns the member and `guest_token` |
-| PUT / DELETE | `/api/share/:shareToken/claims/:itemId` | Set units claimed (body: `units`), or unclaim |
-| PATCH | `/api/share/:shareToken/me` | Set tip and method; mark paid or undo |
 
 ---
 
@@ -177,21 +159,24 @@ Changed 2026-11-03: bills are created from photos only (PRD M2). The AI reads, t
 - [ ] **N6** Saved friends
 
 ### Phase 9: Hardening and demo
-- [ ] **P9.1** Server-side validation on every route; rate limits on join and claim
+- [x] **P9.1** Server-side validation on every route; rate limits on join and claim, and on login and sign-up (row 56)
 - [ ] **P9.2** Loading, empty and error states on every screen (`/impeccable harden`)
 - [ ] **P9.3** Real-device pass: iOS Safari and Android Chrome, throttled network
 - [ ] **P9.4** Accessibility pass: VoiceOver, TalkBack, reduced motion, contrast
-- [ ] **P9.5** README, demo seed data, demo script (wake the Render API first, see PRD R4)
-- [ ] **P9.6** Final presentation
+- [x] **P9.5** README, demo seed data, demo script. README rewritten for a local run; seed data is Home's "Try a sample bill" (shown when there's no OpenAI key); demo script in [DEMO.md](DEMO.md)
+- [ ] **P9.6** Final presentation (Session 24, 5-8 minutes; outline and talk track in [DEMO.md](DEMO.md))
 
 ---
 
 ## Testing
 
-| Layer | Tool (proposed) | What |
+`npm test` at the root runs both sides.
+
+| Layer | Tool | What |
 | --- | --- | --- |
 | Split engine | Vitest | Test-first unit tests and the conservation test (Phase 3) |
-| API | Vitest + Supertest | Auth, ownership, guest-token scoping, status transitions |
+| API | Vitest + Supertest, in-memory MongoDB | Auth, rate limits, ownership, guest-token scoping, status transitions, simultaneous claims |
+| Client | Vitest + React Testing Library (jsdom) | Stepper (claim counter), Home (dashboard, sample bill) |
 | UI | Real phones | Each phase's **Done when** check at phone width; impeccable audit after Phase D |
 
 ## Decisions
@@ -222,6 +207,7 @@ Changed 2026-11-03: bills are created from photos only (PRD M2). The AI reads, t
 | 2026-11-03 | AI spend limits: 10 reads/hour, 30/day, 150k tokens/day per payer; 2M tokens/day for everyone; one read at a time (`receipts/limits.js`, `ai_usage` table, migration 003) | Team request: nobody can spam reads and drain the OpenAI credit |
 | 2026-11-02 | No pre-filled amount in Whish. `whish.money/app/pay/<code>` opens the app, but the code is a Whish Pay invoice (the web link forwards to `pay.whish.money/invoice/pay/legacy?q=<code>`) that only merchants can create | Phone test plus following the link; a made-up code returns Whish Pay's error page |
 | 2026-11-02 | The wallet button goes to the app's store page (App Store or Google Play), which shows Open when the app is installed. No direct links into the apps | Both sites publish link files that match the store apps (`whish.money` claims only `/app/pay/*`; `omt.com.lb` claims `/send-money`, `/wallet` and more), but a phone test opened neither app |
+| 2026-11-19 | Deployment skipped for now; the app is graded running locally. Without an OpenAI key, Home offers "Try a sample bill" (`POST /api/me/sample-bill`) | Instructor's OK. Bills are only created from photos, so a grader without a key could otherwise see none of the bill, guest or dashboard features |
 
 ## Iteration log
 
@@ -283,3 +269,4 @@ Changed 2026-11-03: bills are created from photos only (PRD M2). The AI reads, t
 | 53 | 2026-11-06 | Swipe-back flash back after removing the slides | React Router keeps, per tab, a list of pages that had a view transition (sessionStorage `remix-router-transitions`) and replays one when going back between them; with the slides and their swipe-back workaround removed, that replay froze the screen on the swiped-away page again. Since nothing uses transitions now, `main.jsx` clears that list at startup (one line, nothing added). Verified with the old list planted in the tab: cleared on load; tap + back started 0 view transitions. To check on the iPhone |
 | 54 | 2026-11-06 | Stacking reverted | At the team's request, everything the page stacking (row 45) brought is gone: `main.jsx` back to `<BrowserRouter>` (from 38615d5, with the spinner fallback), every screen back to plain `Link` / `useNavigate`, `lib/stack.jsx` deleted, no view-transition code or session-storage clearing left. Later unrelated changes stay (rows 46-49: Home without the payment-methods button, dark-green Edit, guest "Paid" bar, AI limits, database retry, Log out on the failed screen). Full guest + payer flow passes |
 | 55 | 2026-11-12 | Rewrite to course-only code (team rule: understand every line) | Read all 22 course decks (OCR). Server rebuilt in the Session 18-22 layout: server.js (dotenv, connect, listen) + app.js, Mongoose models (User with payouts; Bill with items, members and claims embedded, optimisticConcurrency + retry in changeBill; Photo as base64; AiUsage), routes auth/me/bills/receipts/share, requireAuth (JWT), logger, GET /api/me/bills, photos via GET /bills/:id/photos. Supabase Auth, Storage and Postgres removed (pg, multer, supabase-js gone). Client in the Session 20 layout: api/client.js (apiFetch, localStorage cache), auth/AuthContext.jsx (token; RequireAuth shows the log-in form in place), utils/; motion removed (CSS keyframes and transitions; sheet drag with pointer events), no useRef/useId/useMemo/??; QR as an <img>. 76 server tests pass (in-memory MongoDB; new: sign up/log in, password change, simultaneous claims). Checked in headless Edge at 390 px: sign up -> get paid, dashboard, bill, sheets (slide, drag to close, short drag springs back), edit, share, guest join/claim/tip/pay, profile, log out, locked page shows log-in. Changes you can see: the tip -> pay sheet no longer glides to its new height; long LBP amounts shrink by character count; email changes apply at once (no confirmation link) |
+| 56 | 2026-11-19 | Capstone requirements check (Capstone_Final_Project.pdf) | Went through every requirement and rubric line. Fixed: (1) no OpenAI key = no way to make a bill: `GET /api/me` now says `readingOn`, and Home shows "Try a sample bill" when it's off; (2) root `npm test` ran only the server: now both sides (`test:server`, `test:client`); (3) login and sign-up had no rate limit: 10 login tries per email and 30 logins + sign-ups per address per 15 minutes (`RATE_LOGIN_PER_EMAIL`, `RATE_AUTH_PER_ADDRESS`), 429 with "Too many tries. Try again in N minutes."; (4) a personal email removed from a code comment in `routes/auth.js`; (5) README rewritten for a local run (local MongoDB option, sample bill, tests, security, architecture diagram, deployment prepared but not live); (6) this file's Architecture section updated to MongoDB/JWT/client+server; PRD's Supabase-era lines marked; (7) demo script `MD/DEMO.md`; (8) milestone tags. New tests: login limits, `readingOn`, Home page (client). 82 server and 10 client tests pass. End to end on an in-memory database with no OpenAI key: sign up, sample bill, guest join, login limit |

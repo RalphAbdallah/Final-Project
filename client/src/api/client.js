@@ -127,6 +127,8 @@ export const api = {
   readReceipt: (dataUrls) =>
     apiFetch('/me/receipts/read', { method: 'POST', body: { photos: dataUrls.map(photoBody) } }),
   createBill: (draft) => apiFetch('/me/bills', { method: 'POST', body: draft }),
+  // No OpenAI key on the server: a ready-made bill with guests, to try everything else.
+  sampleBill: () => apiFetch('/me/sample-bill', { method: 'POST' }),
 
   // The payer's bill screen: each answer is the whole bill again, kept for the next open.
   payerBill: (id) => apiFetch(`/me/bills/${at(id)}`).then(rememberBill(id)),

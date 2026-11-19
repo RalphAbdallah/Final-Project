@@ -8,6 +8,8 @@ process.env.RATE_JOIN_PER_BILL = '3';
 process.env.RATE_JOIN_PER_ADDRESS = '100';
 process.env.RATE_CLAIM_PER_PERSON = '5';
 process.env.RATE_CLAIM_PER_ADDRESS = '100';
+process.env.RATE_LOGIN_PER_EMAIL = '3';
+process.env.RATE_AUTH_PER_ADDRESS = '100';
 const { createCounter, rateLimitsFromEnv } = await import('../middleware/rateLimits.js');
 const { default: app } = await import('../app.js');
 
@@ -31,6 +33,32 @@ describe('rate limit counter', () => {
     expect(rateLimitsFromEnv({}).joinPerBill.limit).toBe(20);
     expect(rateLimitsFromEnv({ RATE_JOIN_PER_BILL: '5' }).joinPerBill.limit).toBe(5);
     expect(rateLimitsFromEnv({ RATE_LIMITS: 'off' })).toBeNull();
+  });
+
+  it('has defaults for the login limits', () => {
+    expect(rateLimitsFromEnv({}).loginPerEmail.limit).toBe(10);
+    expect(rateLimitsFromEnv({}).authPerAddress.limit).toBe(30);
+  });
+});
+
+describe('rate limits on logging in (password guessing)', () => {
+  const login = (email, password) => request(app).post('/api/auth/login').send({ email, password });
+
+  it('stops login tries on one email past the limit, even with the right password', async () => {
+    await request(app).post('/api/auth/signup').send({ name: 'Jason', email: 'jason@example.com', password: 'password123' });
+    for (let i = 0; i < 3; i += 1) expect((await login('jason@example.com', 'wrong-guess')).status).toBe(401);
+    // Same email, any case or spacing: still counted together.
+    const res = await login(' JASON@example.com ', 'password123');
+    expect(res.status).toBe(429);
+    expect(res.body.error).toBe('too_many_requests');
+    expect(Number(res.headers['retry-after'])).toBe(res.body.retryAfter);
+  });
+
+  it('counts each email apart, so one attacked account does not lock out the others', async () => {
+    await request(app).post('/api/auth/signup').send({ name: 'Nour', email: 'nour@example.com', password: 'password123' });
+    for (let i = 0; i < 3; i += 1) await login('someone@example.com', 'wrong-guess');
+    expect((await login('someone@example.com', 'wrong-guess')).status).toBe(429);
+    expect((await login('nour@example.com', 'password123')).status).toBe(200);
   });
 });
 

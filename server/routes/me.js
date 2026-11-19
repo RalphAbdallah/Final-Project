@@ -22,6 +22,8 @@ async function sendProfile(req, res) {
     email: req.user.email,
     payouts: payoutsOf(req.user),
     bills: bills.map(billSummary),
+    // No OpenAI key: photos can't be read, so the app offers a sample bill instead.
+    readingOn: Boolean(process.env.OPENAI_API_KEY),
   });
 }
 
@@ -102,7 +104,8 @@ meRouter.delete('/payouts/:wallet', async (req, res) => {
   await sendProfile(req, res);
 });
 
-// A sample bill with a few guests, to try the app quickly (and for the tests).
+// A sample bill with a few guests, to try the app without an OpenAI key (Home's
+// "Try a sample bill" button), and for the tests.
 meRouter.post('/sample-bill', async (req, res) => {
   const bill = await createSampleBill(req.user);
   res.status(201).json({ id: bill.id, shareToken: bill.shareToken });
